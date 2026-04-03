@@ -1,0 +1,30 @@
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "StackScope — AI-Powered Project Scoping",
+  description:
+    "Transform raw project briefs into precise technical specifications with AI. Get structured proposals, sprint timelines, tech stack recommendations, and database schemas in seconds.",
+  keywords: [
+    "project scoping",
+    "AI",
+    "technical specification",
+    "sprint planning",
+    "tech stack",
+    "SQL schema",
+  ],
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body className="antialiased">
+        {children}
+      </body>
+    </html>
+  );
+}
