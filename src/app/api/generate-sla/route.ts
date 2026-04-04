@@ -54,7 +54,7 @@ export async function POST(req: Request) {
             quantity: 1,
         }],
         mode: 'payment',
-        return_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
+        return_url: `${req.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
     });
 
     return NextResponse.json({ clientSecret: session.client_secret });

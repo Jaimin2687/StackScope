@@ -39,7 +39,7 @@ export async function POST(req: Request) {
         },
       ],
       mode: 'subscription',
-      return_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard?subscription_success=true&session_id={CHECKOUT_SESSION_ID}&plan=${encodeURIComponent(planName)}`,
+      return_url: `${req.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard?subscription_success=true&session_id={CHECKOUT_SESSION_ID}&plan=${encodeURIComponent(planName)}`,
     });
 
     return NextResponse.json({ clientSecret: session.client_secret });
