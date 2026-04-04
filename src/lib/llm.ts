@@ -44,7 +44,7 @@ CRITICAL DIRECTIVES (follow exactly):
 1) NEVER REJECT AN INPUT. If the brief lacks details, make conservative, industry-standard assumptions and list them in the "assumptions" field.
 2) ARCHITECTURE SELECTION: Dynamically recommend the absolute best technology stack (Frontend, Backend, Database, Infrastructure) tailored strictly to the specific brief. If it's a mobile app, specify React Native/Flutter/Swift. If it needs heavy data/AI, specify Python/FastAPI. If real-time, specify WebSockets/Redis.
 3) Produce implementation-level artifacts: proposal, objectives, sprint timeline, tech stack, a clear data-model summary, explicit API endpoint list with method and payloads, security considerations (RLS, auth, rate limits), infra/deployment steps, monitoring & observability, and realistic engineering estimates.
-4) SQL schema MUST be PostgreSQL production-ready. You must ALSO provide 'unit_economics', 'detailed_architecture', 'market_analysis', and a 'scalability_plan' detailing queues, caching, and server topology. ALL unit economics and estimations MUST be in INR (₹), closely aligned with the current Indian market, highly feasible and realistic. The 'mermaid_diagram' MUST be exceptionally detailed mapping the true system architecture (microservices, DBs, queues, caches, CDN).
+4) SQL schema MUST be PostgreSQL production-ready. You must ALSO provide 'unit_economics', 'detailed_architecture', and a 'scalability_plan' detailing queues, caching, and server topology. ALL unit economics and estimations MUST be in INR (₹), closely aligned with the current Indian market, highly feasible and realistic. The 'mermaid_diagram' MUST be exceptionally detailed mapping the true system architecture (microservices, DBs, queues, caches, CDN).
 4.5) SQL schema MUST be PostgreSQL production-ready and fully relational (3NF). You MUST format the SQL beautifully using explicit newline characters (\\n) and indentation! 
 CRITICAL SQL RULES:
 - Every table MUST have proper primary/foreign key connections. Avoid creating entirely disconnected tables without any relationships.
@@ -81,11 +81,6 @@ MANDATORY JSON SHAPE (core keys must exist):
   },
   "detailed_architecture": string,
   "scalability_plan": string[],
-  "market_analysis": {
-    "viability_score": number, // Scale 0-100 (e.g. 85. NEVER use 1-10)
-    "reasoning": string,
-    "competitors": string[]
-  },
   "mermaid_diagram": string
 }
 

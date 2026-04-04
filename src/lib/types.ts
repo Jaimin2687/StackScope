@@ -44,12 +44,6 @@ export interface Estimates {
   optional_features?: OptionalFeature[];
 }
 
-export interface MarketAnalysis {
-  viability_score: number;
-  reasoning: string;
-  competitors: string[];
-}
-
 export interface GeneratedScope {
   providerUsed?: "groq" | "gemini" | "deterministic";
   proposal: ScopeProposal;
@@ -59,11 +53,9 @@ export interface GeneratedScope {
   detailed_architecture?: string;
   scalability_plan?: string[];
   unit_economics?: UnitEconomics;
-  market_analysis?: MarketAnalysis;
   mermaid_diagram?: string;
   estimates?: Estimates;
   is_deleted?: boolean;
-
   deleted_at?: string;
   // Dynamic fields fallback
   [key: string]: any;
