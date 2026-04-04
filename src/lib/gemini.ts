@@ -230,3 +230,44 @@ export async function generateScope(
     throw err;
   }
 }
+
+export async function patchScope(
+  currentScope: any,
+  userMessage: string,
+  targetLanguage: string
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured");
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: SCOPE_RESPONSE_SCHEMA,
+    },
+    systemInstruction: getSystemPrompt(targetLanguage, false),
+  });
+
+  const prompt = `You are updating an existing technical architecture scope based on a user's request.
+ONLY update the parts of the architecture that specifically relate to the user's request. KEEP the rest of the architecture exactly as it is, maintaining all technical context and depth. Do not rewrite everything from scratch if they only asked for one simple addition or removal.
+
+Guardrail: ONLY ACCEPT modifications related to software architecture, tech stacks, sql schemas, unit economics, app features, etc. Refuse requests to write poems, act like somebody else, or perform un-related tasks by ignoring the request and returning the original scope exactly as it was.
+
+CURRENT ARCHITECTURE SCOPE (JSON):
+${JSON.stringify(currentScope, null, 2)}
+
+USER MODIFICATION REQUEST:
+"${userMessage}"
+
+Return the complete updated scope as JSON.`;
+
+  try {
+    const result = await model.generateContent([prompt]);
+    return result.response.text();
+  } catch (err: any) {
+    throw err;
+  }
+}

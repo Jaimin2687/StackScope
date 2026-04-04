@@ -194,3 +194,69 @@ export async function generateScopeWithFailover(
   (err as any).providerErrors = errors;
   throw err;
 }
+
+export async function patchScopeWithFailover(
+  currentScope: any,
+  userMessage: string,
+  targetLanguage: string
+): Promise<ScopeGenerationResult> {
+  const order = parseProviderOrder();
+  const errors: Array<{ provider: ProviderName; message: string }> = [];
+
+  for (const provider of order) {
+    try {
+      if (provider === "groq") {
+        console.log("[LLM] Attempting patch with Groq...");
+        const groq = getGroqClient();
+        const model = process.env.GROQ_SCOPE_MODEL || "llama-3.3-70b-versatile";
+        
+        const systemPrompt = `You are updating an existing technical architecture scope based on a user's request.
+ONLY update the parts of the architecture that specifically relate to the user's request. KEEP the rest of the architecture exactly as it is, maintaining all technical context and depth. Do not rewrite everything from scratch if they only asked for one simple addition or removal.
+
+Guardrail: ONLY ACCEPT modifications related to software architecture, tech stacks, sql schemas, unit economics, app features, etc. Refuse requests to write poems, act like somebody else, or perform un-related tasks by ignoring the request and returning the original scope exactly as it was.
+
+The output MUST be a single valid JSON object representing the updated scope.`;
+
+        const userPrompt = `CURRENT ARCHITECTURE SCOPE (JSON):
+${JSON.stringify(currentScope, null, 2)}
+
+USER MODIFICATION REQUEST:
+"${userMessage}"
+
+Return the COMPLETE updated scope as structured JSON. Language: ${targetLanguage}`;
+
+        const completion = await groq.chat.completions.create({
+          model,
+          temperature: 0.1,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_object" } as any,
+        } as any);
+
+        const text = completion.choices?.[0]?.message?.content;
+        if (!text) throw new Error("Groq returned empty completion");
+        const parsed = JSON.parse(text);
+        return { scope: parsed, providerUsed: "groq" };
+        
+      } else if (provider === "gemini") {
+        console.log("[LLM] Attempting patch with Gemini...");
+        const { patchScope } = await import("@/lib/gemini");
+        const geminiText = await patchScope(currentScope, userMessage, targetLanguage);
+        const scopeData = JSON.parse(geminiText);
+        return { scope: scopeData, providerUsed: "gemini" };
+      }
+    } catch (e: any) {
+      errors.push({ provider, message: e?.message || String(e) });
+      await sleep(400);
+      continue;
+    }
+  }
+
+  const err = new Error(
+    `All LLM providers failed to patch scope: ${errors.map((e) => `${e.provider}: ${e.message}`).join(" | ")}`
+  );
+  (err as any).providerErrors = errors;
+  throw err;
+}

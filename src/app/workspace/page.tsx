@@ -236,6 +236,8 @@ function WorkspaceContent() {
                       scope={scopeResult} 
                       activeTab={activeTab} 
                       onTabChange={setActiveTab} 
+                      scopeId={id}
+                      onScopeUpdate={(newScope) => setScopeResult(newScope)}
                     />
                 </div>
               </div>
