@@ -30,6 +30,37 @@ export function ScopeCard({ scope, isBin }: Props) {
   const [slaUrl, setSlaUrl] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(content?.payment_status || null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+  const checkPaymentStatus = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!content?.payment_link_id) return;
+    try {
+      setIsCheckingStatus(true);
+      const res = await fetch("/api/check-payment-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payment_link_id: content.payment_link_id,
+          scopeId: scope.id,
+          currentScopeObj: content
+        })
+      });
+      const data = await res.json();
+      if (data.payment_status === 'paid') {
+        setPaymentStatus('paid');
+        router.refresh();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
   const handleExport = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -98,7 +129,38 @@ export function ScopeCard({ scope, isBin }: Props) {
   const generateSLA = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsPaymentModalOpen(true);
+
+    // If a payment link was already created, reuse it
+    if (content?.payment_link_url) {
+      setSlaUrl(content.payment_link_url);
+      setPaymentStatus(content?.payment_status || 'pending');
+      return;
+    }
+
+    try {
+      setIsGeneratingSLA(true);
+      const res = await fetch("/api/generate-payment-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: content?.proposal?.title,
+          summary: content?.proposal?.summary,
+          price: content?.estimates?.base_cost_inr,
+          scopeId: scope.id,
+          currentScopeObj: content
+        })
+      });
+      const data = await res.json();
+      if (data.url) {
+        setSlaUrl(data.url);
+        setPaymentStatus('pending');
+        router.refresh();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsGeneratingSLA(false);
+    }
   };
 
   const handleCopyLink = (e: React.MouseEvent) => {
@@ -262,7 +324,7 @@ export function ScopeCard({ scope, isBin }: Props) {
               
               <div className="p-6 space-y-6 text-sm text-neutral-400">
                 <p>
-                  Your legally binding Stripe Checkout Session for the first milestone of this architectural scope is ready. You can copy the link to share with your client, or visit it directly.
+                  Your legally binding Stripe Payment Link for the first milestone of this architectural scope is ready. You can copy the link to share with your client, or visit it directly. It will remain active until the invoice is paid.
                 </p>
 
                 <div className="relative group">
@@ -281,7 +343,7 @@ export function ScopeCard({ scope, isBin }: Props) {
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#1a1a1a] hover:bg-[#222] border border-[#333] text-white font-medium transition-colors"
                   >
                     {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    {isCopied ? "Copied!" : "Get Shareable Link"}
+                    {isCopied ? "Copied" : "Copy Link"}
                   </button>
                   <button 
                     onClick={(e) => {
@@ -293,6 +355,25 @@ export function ScopeCard({ scope, isBin }: Props) {
                     <ExternalLink className="w-4 h-4" />
                     Visit Link
                   </button>
+                </div>
+                
+                <div className="pt-4 border-t border-[#222]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white font-medium">Payment Status:</span>
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatus === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                      {paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+                    </span>
+                  </div>
+                  {paymentStatus !== 'paid' && (
+                    <button 
+                      onClick={checkPaymentStatus}
+                      disabled={isCheckingStatus}
+                      className="w-full mt-4 flex items-center justify-center gap-2 py-2 rounded-lg bg-[#1a1a1a] hover:bg-[#222] text-white transition-colors disabled:opacity-50"
+                    >
+                      {isCheckingStatus ? <Loader2 className="w-4 h-4 animate-spin text-indigo-400" /> : <RefreshCw className="w-4 h-4 text-indigo-400" />}
+                      Check Payment Status
+                    </button>
+                  )}
                 </div>
               </div>
             </motion.div>
