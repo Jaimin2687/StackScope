@@ -26,7 +26,13 @@ export function AuthForm() {
         if (error) throw error;
         router.push("/dashboard");
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { error } = await supabase.auth.signUp({ 
+          email, 
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/dashboard`
+          }
+        });
         if (error) throw error;
         setError("Check your email for the confirmation link.");
         setIsLogin(true);
