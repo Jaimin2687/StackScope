@@ -39,6 +39,8 @@ export async function POST(req: Request) {
     const safeSummary = (summary || 'Automated StackScope Service Level Agreement binding.').substring(0, 450);
 
     const session = await stripe.checkout.sessions.create({
+        // @ts-ignore
+        ui_mode: 'embedded',
         payment_method_types: ['card'],
         line_items: [{
             price_data: {
@@ -52,11 +54,10 @@ export async function POST(req: Request) {
             quantity: 1,
         }],
         mode: 'payment',
-        success_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard?payment_success=true`,
-        cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard?payment_canceled=true`,
+        return_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
     });
 
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({ clientSecret: session.client_secret });
   } catch (err: any) {
     console.error("Stripe Checkout Error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });

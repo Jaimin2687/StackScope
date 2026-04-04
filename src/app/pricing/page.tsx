@@ -3,10 +3,13 @@
 import React, { useState } from "react";
 import { TopNav } from "@/components/top-nav";
 import { Check, Info, ArrowRight, Zap, Target, Briefcase } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { PricingCheckoutModal } from "./PricingCheckoutModal";
 
 export default function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
+  const [selectedPlanName, setSelectedPlanName] = useState<string | null>(null);
+  const [selectedPrice, setSelectedPrice] = useState<string | null>(null);
 
   const plans = [
     {
@@ -73,23 +76,9 @@ export default function PricingPage() {
       window.location.href = "/workspace";
       return;
     }
-
-    try {
-      const res = await fetch("/api/create-subscription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planName, price: priceStr, cycle }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert("Could not initialize Stripe Checkout.");
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Error initializing checkout.");
-    }
+    
+    setSelectedPlanName(planName);
+    setSelectedPrice(priceStr);
   };
 
   return (
@@ -203,6 +192,20 @@ export default function PricingPage() {
           ))}
         </div>
       </main>
+
+      <AnimatePresence>
+        {selectedPlanName && selectedPrice && billingCycle && (
+          <PricingCheckoutModal 
+            planName={selectedPlanName} 
+            price={selectedPrice}
+            cycle={billingCycle}
+            onClose={() => {
+              setSelectedPlanName(null);
+              setSelectedPrice(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

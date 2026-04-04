@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { downloadScopePDF } from "@/lib/pdf-generator";
+import { ScopeCheckoutModal } from "./ScopeCheckoutModal";
 
 interface Props {
   scope: any; // Database row type
@@ -28,37 +29,22 @@ export function ScopeCard({ scope, isBin }: Props) {
   const [isExporting, setIsExporting] = useState(false);
   const [slaUrl, setSlaUrl] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   const handleExport = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
     if (!content) return;
-    
-    let paymentLink = slaUrl;
-    if (!paymentLink) {
-      setIsExporting(true);
-      try {
-        const res = await fetch("/api/generate-sla", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: content?.proposal?.title,
-            summary: content?.proposal?.summary,
-            estimates: content?.estimates
-          })
-        });
-        const data = await res.json();
-        if (data.url) paymentLink = data.url;
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsExporting(false);
-      }
+    setIsExporting(true);
+    try {
+      // Trigger branded PDF generation natively
+      await downloadScopePDF(content);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsExporting(false);
     }
-    
-    // Trigger branded PDF generation natively
-    downloadScopePDF(content, paymentLink || undefined);
   };
 
   const handleSoftDelete = async (e: React.MouseEvent) => {
@@ -112,26 +98,7 @@ export function ScopeCard({ scope, isBin }: Props) {
   const generateSLA = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    try {
-      setIsGeneratingSLA(true);
-      const res = await fetch("/api/generate-sla", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: content?.proposal?.title,
-          summary: content?.proposal?.summary,
-          estimates: content?.estimates
-        })
-      });
-      const data = await res.json();
-      if (data.url) {
-        setSlaUrl(data.url);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsGeneratingSLA(false);
-    }
+    setIsPaymentModalOpen(true);
   };
 
   const handleCopyLink = (e: React.MouseEvent) => {
@@ -252,6 +219,18 @@ export function ScopeCard({ scope, isBin }: Props) {
           <CardContent />
         </Link>
       )}
+
+      {/* SLA Checkout Modal */}
+      <AnimatePresence>
+        {isPaymentModalOpen && content && (
+          <ScopeCheckoutModal
+            title={content.proposal?.title || 'Scope SLA'}
+            summary={content.proposal?.summary || ''}
+            price={content.estimates?.base_cost_inr?.toString() || '0'}
+            onClose={() => setIsPaymentModalOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* SLA Popup Modal */}
       <AnimatePresence>

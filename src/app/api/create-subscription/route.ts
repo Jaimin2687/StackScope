@@ -20,6 +20,7 @@ export async function POST(req: Request) {
     const unitAmount = Math.round(cleanedPrice * 100);
 
     const session = await stripe.checkout.sessions.create({
+      ui_mode: 'embedded_page' as any,
       payment_method_types: ['card'],
       line_items: [
         {
@@ -38,11 +39,10 @@ export async function POST(req: Request) {
         },
       ],
       mode: 'subscription',
-      success_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard?subscription_success=true&plan=${encodeURIComponent(planName)}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/pricing?subscription_canceled=true`,
+      return_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard?subscription_success=true&session_id={CHECKOUT_SESSION_ID}&plan=${encodeURIComponent(planName)}`,
     });
 
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({ clientSecret: session.client_secret });
   } catch (err: any) {
     console.error("Stripe Subscription Error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
