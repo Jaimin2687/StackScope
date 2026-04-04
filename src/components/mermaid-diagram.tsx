@@ -43,6 +43,11 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
           .replace(/^(graph\s+[A-Z]+);/i, "$1\n") // clean semicolons directly after graph declaration
           .trim();
 
+        // Check if the AI forgot to declare the graph type (e.g., started with node immediately)
+        if (!/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|journey|mindmap|requirementDiagram)/i.test(cleanChart)) {
+          cleanChart = `graph TD\n${cleanChart}`;
+        }
+
         const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
         const { svg } = await mermaid.render(id, cleanChart);
         setSvgStr(svg);

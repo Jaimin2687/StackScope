@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CopyPlus, LayoutDashboard, Settings, LogOut, TerminalSquare, FileCode } from "lucide-react";
 import { motion } from "framer-motion";
+import { Button } from "@/components/ui/watermelon";
 
 export function SideNav() {
   const pathname = usePathname();
@@ -67,31 +68,38 @@ export function SideNav() {
       </div>
 
       <div className="mt-auto space-y-4">
-        <Link href="/workspace" className="block relative">
-          <motion.button 
-            whileHover={{ scale: 1.02 }} 
-            whileTap={{ scale: 0.98 }}
-            className="w-full flex items-center gap-2 text-sm py-2 px-3 bg-white text-black font-medium rounded-md shadow-sm"
-          >
+        {/* ── Watermelon UI: Button (primary) for New Scope CTA ── */}
+        <Link href="/workspace" className="block">
+          <Button variant="primary" size="sm" className="w-full rounded-md">
             <CopyPlus className="w-4 h-4" />
             New Scope
-          </motion.button>
+          </Button>
         </Link>
         
         <div className="h-px w-full bg-[#222]" />
         
         <div className="flex flex-col gap-1">
-          <Link href="/settings" className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-[#111] transition-colors w-full ${pathname === '/settings' ? 'text-white bg-[#111] border border-[#222]' : 'text-neutral-500 hover:text-neutral-200'}`}>
-            <Settings className="w-4 h-4" />
-            Settings
+          {/* ── Watermelon UI: Button (ghost) for Settings ── */}
+          <Link href="/settings">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`w-full justify-start gap-3 rounded-md ${pathname === '/settings' ? 'text-white bg-[#111] border border-[#222]' : ''}`}
+            >
+              <Settings className="w-4 h-4" />
+              Settings
+            </Button>
           </Link>
-          <button 
+          {/* ── Watermelon UI: Button (ghost) for Sign Out ── */}
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleSignOut}
-            className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-neutral-500 hover:text-neutral-200 rounded-md hover:bg-[#111] transition-colors w-full"
+            className="w-full justify-start gap-3 rounded-md"
           >
             <LogOut className="w-4 h-4" />
             Sign Out
-          </button>
+          </Button>
         </div>
       </div>
     </motion.nav>

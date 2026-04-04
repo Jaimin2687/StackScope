@@ -121,21 +121,19 @@ export function ResultsView({ scope, activeTab }: Props) {
       <button
         onClick={() => setIsEditing(!isEditing)}
         className={`flex flex-shrink-0 items-center gap-2 px-3 py-1.5 ${isEditing ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30' : 'bg-[#111] hover:bg-[#222] text-neutral-300 border border-[#333]'} rounded-md text-[12px] font-medium transition-colors`}
-      >
+        >
         {isEditing ? <><Save className="w-3.5 h-3.5" /> Save Edits</> : <><Edit3 className="w-3.5 h-3.5" /> Edit</>}
       </button>
       <button
         onClick={handleExport}
         disabled={isExporting}
         className={`flex flex-shrink-0 items-center gap-2 px-3 py-1.5 ${isExporting ? 'bg-[#222] text-emerald-400/50 cursor-not-allowed' : 'bg-[#111] hover:bg-[#222] text-neutral-300'} border border-[#333] rounded-md text-[12px] font-medium transition-colors`}
-      >
+        >
         {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" /> : <Download className="w-3.5 h-3.5" />}
         {isExporting ? 'Preparing Artifact...' : 'Export PDF'}
       </button>
     </div>
-  );
-
-  const containerState = {
+  );  const containerState = {
     hidden: { opacity: 0, y: 10 },
     show: { opacity: 1, y: 0, transition: { staggerChildren: 0.05 } }
   };
