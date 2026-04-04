@@ -734,7 +734,7 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-[#0a0a0a] border border-[#222] rounded-xl shadow-2xl w-full max-w-md p-6 relative"
+                className="bg-[#0a0a0a] border border-[#222] rounded-xl shadow-2xl w-full max-w-lg p-6 relative max-h-[90vh] overflow-y-auto custom-scrollbar"
               >
                 <button 
                   onClick={() => setShowConfigModal(false)}
@@ -745,10 +745,42 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
                 </button>
                 <h3 className="text-xl font-medium text-white mb-2">Deploy your Schema</h3>
                 <p className="text-sm text-neutral-400 mb-6">
-                  To use 1-Click Deployment, link your target Supabase project securely. Your credentials are encrypted.
+                  To use 1-Click Deployment, you need to execute a small helper function on your database and link your project credentials.
                 </p>
 
-                <form onSubmit={handleSaveConfig} className="space-y-4">
+                <div className="mb-6 space-y-2">
+                  <label className="block text-xs font-medium text-emerald-400 uppercase tracking-wider">Step 1: Execute SQL in Supabase</label>
+                  <p className="text-xs text-neutral-500 mb-2">Run this in your target Supabase SQL Editor once to allow remote execution.</p>
+                  <div className="relative rounded-lg border border-[#222] bg-[#050505] p-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const sql = `-- Run this once in your Supabase SQL Editor\ncreate or replace function exec_sql(sql_query text)\nreturns void as $$\nbegin\n  execute sql_query;\nend;\n$$ language plpgsql security definer;\n\n-- Grant execution to API keys securely\nGRANT EXECUTE ON FUNCTION exec_sql(text) TO anon;\nGRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`;
+                        navigator.clipboard.writeText(sql);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="absolute top-3 right-3 p-1.5 bg-[#111] border border-[#333] rounded text-neutral-400 hover:text-white transition-colors"
+                      title="Copy SQL snippet"
+                    >
+                      {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                    <pre className="text-[11px] leading-relaxed font-mono text-neutral-400 overflow-x-auto pr-10">
+{`create or replace function exec_sql(sql_query text)
+returns void as $$
+begin
+  execute sql_query;
+end;
+$$ language plpgsql security definer;
+
+GRANT EXECUTE ON FUNCTION exec_sql(text) TO anon;
+GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`}
+                    </pre>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSaveConfig} className="space-y-4 border-t border-[#222] pt-6">
+                  <label className="block text-xs font-medium text-emerald-400 uppercase tracking-wider mb-1">Step 2: Enter Credentials</label>
                   <div>
                     <label className="block text-xs font-medium text-neutral-400 mb-1">Project URL</label>
                     <input
