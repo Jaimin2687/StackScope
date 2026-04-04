@@ -64,7 +64,7 @@ const SCOPE_RESPONSE_SCHEMA = {
     sql_schema: {
       type: SchemaType.STRING,
       description:
-        "Complete PostgreSQL CREATE TABLE statements. MUST include ACID transactions, B-Tree/Hash indexes, row-level security policies, and junction tables.",
+        "EXTREMELY ADVANCED PostgreSQL CREATE TABLE script. YOU MUST NOT USE BASIC TEMPLATES. You must include: 1. Advanced Indexing (B-Tree/Hash/GIN/GiST), 2. Trigger functions (like updated_at auto-updates), 3. Complex CHECK constraints, 4. Explicit ACID-compliant transaction logic or configuration comments, 5. Full RLS security policies, 6. ON DELETE CASCADE triggers.",
     },
     unit_economics: {
       type: SchemaType.OBJECT,
@@ -153,7 +153,7 @@ INSTRUCTIONS:
 2. Generate a comprehensive technical scope document.
 3. All output text MUST be in the language: ${targetLanguage}.
 4. Be specific and practical — no vague recommendations.
-5. The SQL schema should be production-ready PostgreSQL with proper types, constraints, and indexes.
+5. The SQL schema MUST BE OVER-ENGINEERED and PRODUCTION-GRADE. Do not output simple templates. Include advanced indexing, triggers/functions for business logic, ACID compliance comments, robust CHECK constraints, Enum types, and explicit foreign key rules (CASCADE/RESTRICT).
 6. Sprint timelines should be realistic for a small-to-medium development team (2-5 developers).
 7. Tech stack recommendations should be modern, well-supported, and appropriate for the project scale.
 
