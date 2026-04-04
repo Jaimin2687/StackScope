@@ -8,7 +8,7 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { InteractiveEstimates } from "./interactive-estimates";
 import Link from "next/link";
-import { checkConfigurationStatus } from "@/app/settings/actions";
+import { checkConfigurationStatus, saveEncryptedConfig } from "@/app/settings/actions";
 
 // Heavy component - Code-split aggressively so initial renders aren't blocked by 1.5MB payload
 const MermaidDiagram = dynamic(() => import("./mermaid-diagram").then(mod => mod.MermaidDiagram), {
@@ -29,6 +29,11 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
   const [deployStatus, setDeployStatus] = useState<"idle" | "deploying" | "success">("idle");
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [hasConfig, setHasConfig] = useState(false);
+
+  const [configUrl, setConfigUrl] = useState("");
+  const [configKey, setConfigKey] = useState("");
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [configError, setConfigError] = useState("");
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedScope, setEditedScope] = useState<GeneratedScope>(scope);
@@ -95,6 +100,38 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!configUrl.trim() || !configKey.trim()) {
+      setConfigError("Both URL and Anon Key are required.");
+      return;
+    }
+    
+    // basic format check
+    if (!configUrl.startsWith("https://")) {
+      setConfigError("URL must start with https://");
+      return;
+    }
+
+    try {
+      setConfigError("");
+      setIsSavingConfig(true);
+      const res = await saveEncryptedConfig(configUrl.trim(), configKey.trim());
+      if (res.success) {
+        setHasConfig(true);
+        setShowConfigModal(false);
+        // Optionally trigger deploy right away: handleDeploy() 
+        // But letting them click it again is safer UX
+      } else {
+        setConfigError(res.error || "Failed to save configuration.");
+      }
+    } catch (err: any) {
+      setConfigError(err.message || "An error occurred.");
+    } finally {
+      setIsSavingConfig(false);
+    }
   };
 
   const handleDeploy = async () => {
@@ -692,7 +729,7 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
         {/* Missing Config Modal */}
         <AnimatePresence>
           {showConfigModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -706,23 +743,59 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
                 >
                   <X className="w-5 h-5" />
                 </button>
-                <h3 className="text-xl font-medium text-white mb-2">Configure Target Database</h3>
+                <h3 className="text-xl font-medium text-white mb-2">Deploy your Schema</h3>
                 <p className="text-sm text-neutral-400 mb-6">
-                  To use 1-Click Deployment, you need to link your own Supabase project credentials in your settings.
+                  To use 1-Click Deployment, link your target Supabase project securely. Your credentials are encrypted.
                 </p>
-                <div className="flex gap-3 justify-end mt-8">
-                  <button 
-                    onClick={() => setShowConfigModal(false)}
-                    className="px-4 py-2 text-sm font-medium text-neutral-400 hover:text-white transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <Link href="/settings">
-                    <button className="px-4 py-2 bg-white text-black text-sm font-medium rounded-md hover:bg-neutral-200 transition-colors">
-                      Go to Settings
+
+                <form onSubmit={handleSaveConfig} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-400 mb-1">Project URL</label>
+                    <input
+                      type="url"
+                      value={configUrl}
+                      onChange={(e) => setConfigUrl(e.target.value)}
+                      placeholder="https://xxxx.supabase.co"
+                      required
+                      className="w-full bg-[#050505] border border-[#333] rounded-lg py-2.5 px-3 text-sm text-white focus:border-emerald-500/50 outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-400 mb-1">Service Role / Anon Key</label>
+                    <input
+                      type="password"
+                      value={configKey}
+                      onChange={(e) => setConfigKey(e.target.value)}
+                      placeholder="eyJh..."
+                      required
+                      className="w-full bg-[#050505] border border-[#333] rounded-lg py-2.5 px-3 text-sm text-white focus:border-emerald-500/50 outline-none transition-colors"
+                    />
+                  </div>
+
+                  {configError && (
+                    <div className="p-3 bg-red-950/20 border border-red-900/50 rounded-md text-red-400 text-xs">
+                      {configError}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 justify-end mt-8 pt-4 border-t border-[#222]">
+                    <button 
+                      type="button"
+                      onClick={() => setShowConfigModal(false)}
+                      className="px-4 py-2 text-sm font-medium text-neutral-400 hover:text-white transition-colors"
+                    >
+                      Cancel
                     </button>
-                  </Link>
-                </div>
+                    <button 
+                      type="submit"
+                      disabled={isSavingConfig}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isSavingConfig && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Save & Continue
+                    </button>
+                  </div>
+                </form>
               </motion.div>
             </div>
           )}
