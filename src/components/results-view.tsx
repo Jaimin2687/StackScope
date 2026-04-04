@@ -208,6 +208,39 @@ export function ResultsView({ scope, activeTab }: Props) {
           </motion.div>
         )}
 
+        {/* Market Analysis */}
+        {s.market_analysis && (
+          <motion.div variants={itemState} className="space-y-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-500 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Market Viability
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-5 rounded-md border border-[#222] bg-[#0a0a0a] flex flex-col justify-center items-center text-center">
+                <span className="text-neutral-500 uppercase text-[11px] tracking-widest mb-2">Viability Score</span>
+                <div className="flex items-baseline gap-1">
+                  <span className={`text-4xl font-bold ${s.market_analysis.viability_score >= 80 ? 'text-emerald-400' : s.market_analysis.viability_score >= 60 ? 'text-amber-400' : 'text-rose-400'}`}>
+                    {s.market_analysis.viability_score}
+                  </span>
+                  <span className="text-neutral-500 font-medium">/100</span>
+                </div>
+              </div>
+              <div className="md:col-span-2 p-5 rounded-md border border-[#222] bg-[#0a0a0a] flex flex-col justify-center">
+                <p className="text-sm text-neutral-300 leading-relaxed italic mb-4">"{renderValue(s.market_analysis.reasoning)}"</p>
+                <div>
+                  <span className="text-neutral-500 uppercase text-[10px] tracking-widest block mb-2">Top Competitors</span>
+                  <div className="flex flex-wrap gap-2">
+                    {s.market_analysis.competitors?.map((comp: string, i: number) => (
+                      <span key={i} className="px-2.5 py-1 rounded-sm bg-[#1a1a1a] border border-[#333] text-[11px] text-neutral-400 font-medium">
+                        {comp}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* Detailed Architecture */}
         {s.detailed_architecture && (
           <motion.div variants={itemState} className="space-y-4">
