@@ -28,6 +28,7 @@ export function ScopeCard({ scope, isBin }: Props) {
   const [isGeneratingSLA, setIsGeneratingSLA] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [slaUrl, setSlaUrl] = useState<string | null>(null);
+  const [localPhases, setLocalPhases] = useState<any[]>(content?.payment_phases || []);
   const [isCopied, setIsCopied] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(content?.payment_status || null);
@@ -38,21 +39,27 @@ export function ScopeCard({ scope, isBin }: Props) {
       e.preventDefault();
       e.stopPropagation();
     }
-    if (!content?.payment_link_id) return;
+    const hasLegacyLink = !!content?.payment_link_id;
+    const hasPhases = Array.isArray(content?.payment_phases) && content.payment_phases.length > 0;
+    
+    if (!hasLegacyLink && !hasPhases) return;
+
     try {
       setIsCheckingStatus(true);
       const res = await fetch("/api/check-payment-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          payment_link_id: content.payment_link_id,
           scopeId: scope.id,
           currentScopeObj: content
         })
       });
       const data = await res.json();
-      if (data.payment_status === 'paid') {
-        setPaymentStatus('paid');
+      if (data.phases) {
+        setLocalPhases(data.phases);
+      }
+      if (data.payment_status === 'paid' || data.phases?.some((p: any) => p.status === 'paid')) {
+        setPaymentStatus(data.payment_status);
         router.refresh();
       }
     } catch (err) {
@@ -126,15 +133,13 @@ export function ScopeCard({ scope, isBin }: Props) {
     }
   };
 
-  const generateSLA = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // If a payment link was already created, reuse it
-    if (content?.payment_link_url) {
-      setSlaUrl(content.payment_link_url);
-      setPaymentStatus(content?.payment_status || 'pending');
-      return;
+  const [activePhaseIndex, setActivePhaseIndex] = useState<number>(0);
+  const phases = content?.payment_phases || [];
+  
+  const generateSLA = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
 
     try {
@@ -153,7 +158,13 @@ export function ScopeCard({ scope, isBin }: Props) {
       const data = await res.json();
       if (data.url) {
         setSlaUrl(data.url);
-        setPaymentStatus('pending');
+        // By default show the latest active phase
+        const currentPhases = data.phases || [];
+        setLocalPhases(currentPhases);
+        if (currentPhases.length > 0) {
+          setActivePhaseIndex(currentPhases.length - 1);
+          setPaymentStatus(currentPhases[currentPhases.length - 1].status);
+        }
         router.refresh();
       }
     } catch (err) {
@@ -163,11 +174,11 @@ export function ScopeCard({ scope, isBin }: Props) {
     }
   };
 
-  const handleCopyLink = (e: React.MouseEvent) => {
+  const handleCopyLink = (e: React.MouseEvent, urlToCopy: string) => {
     e.preventDefault();
     e.stopPropagation();
-    if (slaUrl) {
-      navigator.clipboard.writeText(slaUrl);
+    if (urlToCopy) {
+      navigator.clipboard.writeText(urlToCopy);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     }
@@ -324,56 +335,119 @@ export function ScopeCard({ scope, isBin }: Props) {
               
               <div className="p-6 space-y-6 text-sm text-neutral-400">
                 <p>
-                  Your legally binding Stripe Payment Link for the first milestone of this architectural scope is ready. You can copy the link to share with your client, or visit it directly. It will remain active until the invoice is paid.
+                  Your legally binding Stripe Payment Links for this scope are ready. Share them securely with your client. They will remain active until the invoice is paid.
                 </p>
 
-                <div className="relative group">
-                  <input 
-                    type="text" 
-                    readOnly 
-                    title="Stripe SLA URL"
-                    value={slaUrl} 
-                    className="w-full bg-[#050505] border border-[#333] rounded-lg py-3 px-4 text-white pr-10 outline-none select-all focus:border-indigo-500/50 transition-colors"
-                  />
-                </div>
+                {localPhases.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                      {localPhases.map((phase, i) => (
+                        <button
+                          key={i}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActivePhaseIndex(i); }}
+                          className={`px-3 py-1.5 rounded-md whitespace-nowrap text-xs font-medium transition-colors ${
+                            activePhaseIndex === i 
+                              ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' 
+                              : 'bg-[#111] text-neutral-500 border border-[#333] hover:text-white'
+                          }`}
+                        >
+                          Phase {i + 1} {phase.status === 'paid' ? '✓' : ''}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {localPhases[activePhaseIndex] && (
+                      <div className="space-y-4 pt-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-white font-medium text-base">Phase {activePhaseIndex + 1}</span>
+                          <span className={`px-2 py-1 rounded-full text-[10px] font-semibold uppercase ${
+                            localPhases[activePhaseIndex].status === 'paid' 
+                              ? 'bg-emerald-500/10 text-emerald-400' 
+                              : 'bg-amber-500/10 text-amber-400'
+                          }`}>
+                            {localPhases[activePhaseIndex].status === 'paid' ? 'PAID' : 'PENDING'}
+                          </span>
+                        </div>
+                        
+                        <div className="relative group">
+                          <input 
+                            type="text" 
+                            readOnly 
+                            title="Stripe SLA URL"
+                            value={localPhases[activePhaseIndex].url || ''} 
+                            className="w-full bg-[#050505] border border-[#333] rounded-lg py-3 px-4 text-white pr-10 outline-none select-all focus:border-indigo-500/50 transition-colors"
+                          />
+                        </div>
 
-                <div className="flex items-center gap-3 pt-2">
-                  <button 
-                    onClick={handleCopyLink}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#1a1a1a] hover:bg-[#222] border border-[#333] text-white font-medium transition-colors"
-                  >
-                    {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    {isCopied ? "Copied" : "Copy Link"}
-                  </button>
-                  <button 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      window.open(slaUrl, "_blank");
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors shadow-lg shadow-indigo-900/20"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    Visit Link
-                  </button>
-                </div>
-                
-                <div className="pt-4 border-t border-[#222]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-white font-medium">Payment Status:</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatus === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
-                      {paymentStatus === 'paid' ? 'Paid' : 'Pending'}
-                    </span>
+                        <div className="flex items-center gap-3">
+                          <button 
+                            onClick={(e) => handleCopyLink(e, localPhases[activePhaseIndex].url)}
+                            disabled={!localPhases[activePhaseIndex].url}
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#1a1a1a] hover:bg-[#222] border border-[#333] text-white font-medium transition-colors disabled:opacity-50"
+                          >
+                            {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                            {isCopied ? "Copied" : "Copy Link"}
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (localPhases[activePhaseIndex].url) window.open(localPhases[activePhaseIndex].url, "_blank");
+                            }}
+                            disabled={!localPhases[activePhaseIndex].url}
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors shadow-lg shadow-indigo-900/20 disabled:opacity-50 disabled:shadow-none"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                            Visit Link
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {paymentStatus !== 'paid' && (
+                ) : (
+                  <div className="space-y-4">
+                    <div className="relative group">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        title="Stripe SLA URL"
+                        value={slaUrl!} 
+                        className="w-full bg-[#050505] border border-[#333] rounded-lg py-3 px-4 text-white pr-10 outline-none select-all focus:border-indigo-500/50 transition-colors"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-2">
+                      <button 
+                        onClick={(e) => handleCopyLink(e, slaUrl!)}
+                        className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#1a1a1a] hover:bg-[#222] border border-[#333] text-white font-medium transition-colors"
+                      >
+                        {isCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                        {isCopied ? "Copied" : "Copy Link"}
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.open(slaUrl!, "_blank");
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors shadow-lg shadow-indigo-900/20"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        Visit Link
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="pt-6 border-t border-[#222]">
+                  {localPhases.some(p => p.status !== 'paid') || (localPhases.length === 0 && paymentStatus !== 'paid') ? (
                     <button 
                       onClick={checkPaymentStatus}
                       disabled={isCheckingStatus}
-                      className="w-full mt-4 flex items-center justify-center gap-2 py-2 rounded-lg bg-[#1a1a1a] hover:bg-[#222] text-white transition-colors disabled:opacity-50"
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#1a1a1a] hover:bg-[#222] text-white transition-colors disabled:opacity-50"
                     >
                       {isCheckingStatus ? <Loader2 className="w-4 h-4 animate-spin text-indigo-400" /> : <RefreshCw className="w-4 h-4 text-indigo-400" />}
-                      Check Payment Status
+                      Sync Payment Status
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </motion.div>
