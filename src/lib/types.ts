@@ -15,6 +15,14 @@ export interface TechStack {
   backend: string[];
   database: string;
   infra: string[];
+  detailed_specifications?: string;
+}
+
+export interface UnitEconomics {
+  hosting_costs_per_month?: string;
+  database_costs_per_month?: string;
+  expected_profit_margin?: string;
+  break_even_users?: number;
 }
 
 export interface OptionalFeature {
@@ -42,6 +50,9 @@ export interface GeneratedScope {
   sprint_timeline: SprintItem[];
   tech_stack: TechStack;
   sql_schema: string;
+  detailed_architecture?: string;
+  scalability_plan?: string[];
+  unit_economics?: UnitEconomics;
   mermaid_diagram?: string;
   estimates?: Estimates;
   is_deleted?: boolean;

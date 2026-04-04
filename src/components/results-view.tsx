@@ -181,6 +181,62 @@ export function ResultsView({ scope, activeTab }: Props) {
           </motion.div>
         )}
 
+        {/* Unit Economics */}
+        {s.unit_economics && (
+          <motion.div variants={itemState} className="space-y-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-500 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Unit Economics & Monetization
+            </h3>
+            <div className="p-5 rounded-md border border-[#222] bg-[#0a0a0a] flex flex-wrap gap-8 text-sm">
+              <div className="flex flex-col">
+                <span className="text-neutral-500 capitalize text-[11px] tracking-widest mb-1">Hosting Costs/Mo</span>
+                <span className="text-neutral-200 text-lg font-medium">{renderValue(s.unit_economics.hosting_costs_per_month)}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-neutral-500 capitalize text-[11px] tracking-widest mb-1">DB Costs/Mo</span>
+                <span className="text-neutral-200 text-lg font-medium">{renderValue(s.unit_economics.database_costs_per_month)}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-neutral-500 capitalize text-[11px] tracking-widest mb-1">Expected Margin</span>
+                <span className="text-neutral-200 text-lg font-medium text-emerald-400">{renderValue(s.unit_economics.expected_profit_margin)}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-neutral-500 capitalize text-[11px] tracking-widest mb-1">Break-Even Users</span>
+                <span className="text-neutral-200 text-lg font-medium text-blue-400">{renderValue(s.unit_economics.break_even_users)}</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Detailed Architecture */}
+        {s.detailed_architecture && (
+          <motion.div variants={itemState} className="space-y-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-500 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Deep Architecture
+            </h3>
+            <div className="p-5 rounded-md border border-[#222] bg-[#0a0a0a]">
+              <p className="text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap">{renderValue(s.detailed_architecture)}</p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Scalability Plan */}
+        {s.scalability_plan && s.scalability_plan.length > 0 && (
+          <motion.div variants={itemState} className="space-y-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-500 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-500" /> Scalability Plan
+            </h3>
+            <ul className="space-y-3 p-5 rounded-md border border-[#222] bg-[#0a0a0a]">
+              {s.scalability_plan.map((step: string, i: number) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="text-orange-500 font-bold mt-0.5 text-sm">{i + 1}.</span>
+                  <span className="text-sm text-neutral-300 leading-relaxed">{renderValue(step)}</span>
+                </li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
+
         {/* Architecture Diagram */}
         {s.mermaid_diagram && (
           <motion.div variants={itemState} className="space-y-4">
@@ -384,34 +440,49 @@ export function ResultsView({ scope, activeTab }: Props) {
       <motion.div variants={containerState} initial="hidden" animate="show" className="space-y-8 pb-20">
         {renderActionBar()}
 
-        {Object.entries(editedScope.tech_stack).map(([category, items]) => (
-          <motion.div key={category} variants={itemState} className="space-y-4">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-500">
-              {category.replace("_", " ")}
+        {Object.entries(editedScope.tech_stack).map(([category, items]) => {
+          if (category === "detailed_specifications") return null;
+          return (
+            <motion.div key={category} variants={itemState} className="space-y-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-500">
+                {category.replace("_", " ")}
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {isEditing ? (
+                  <input 
+                    type="text"
+                    value={(Array.isArray(items) ? items : [items]).join(", ")}
+                    onChange={(e) => {
+                      const newTech = { ...editedScope.tech_stack };
+                      (newTech as any)[category] = e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean);
+                      setEditedScope({...editedScope, tech_stack: newTech});
+                    }}
+                    className="w-full bg-[#111] border border-[#333] rounded-md px-3 py-2 text-[13px] font-medium text-neutral-300 focus:outline-none focus:border-indigo-500/50"
+                    placeholder="e.g. Next.js, React, Tailwind CSS"
+                  />
+                ) : (
+                  (Array.isArray(items) ? items : [items]).map((tech: any, i: number) => (
+                    <span key={i} className="px-3 py-1.5 rounded-full border border-[#333] bg-[#111] text-[13px] font-medium text-neutral-300">
+                      {tech}
+                    </span>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          );
+        })}
+
+        {/* Detailed Tech Stack Specs */}
+        {editedScope.tech_stack.detailed_specifications && (
+          <motion.div variants={itemState} className="space-y-4 mt-8 pt-8 border-t border-[#222]">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-500 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> Deep Architecture / Specification
             </h3>
-            <div className="flex flex-wrap gap-2">
-              {isEditing ? (
-                <input 
-                  type="text"
-                  value={(Array.isArray(items) ? items : [items]).join(", ")}
-                  onChange={(e) => {
-                    const newTech = { ...editedScope.tech_stack };
-                    (newTech as any)[category] = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
-                    setEditedScope({...editedScope, tech_stack: newTech});
-                  }}
-                  className="w-full bg-[#111] border border-[#333] rounded-md px-3 py-2 text-[13px] font-medium text-neutral-300 focus:outline-none focus:border-indigo-500/50"
-                  placeholder="e.g. Next.js, React, Tailwind CSS"
-                />
-              ) : (
-                (Array.isArray(items) ? items : [items]).map((tech: any, i: number) => (
-                  <span key={i} className="px-3 py-1.5 rounded-full border border-[#333] bg-[#111] text-[13px] font-medium text-neutral-300">
-                    {tech}
-                  </span>
-                ))
-              )}
+            <div className="p-5 rounded-md border border-[#222] bg-[#0a0a0a]">
+              <p className="text-sm text-neutral-300 leading-relaxed whitespace-pre-wrap">{editedScope.tech_stack.detailed_specifications}</p>
             </div>
           </motion.div>
-        ))}
+        )}
       </motion.div>
     );
   }
