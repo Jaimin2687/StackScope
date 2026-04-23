@@ -18,9 +18,7 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({
-            request,
-          });
+          supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );
@@ -29,26 +27,31 @@ export async function middleware(request: NextRequest) {
     }
   );
 
+  // ✅ Use getSession() NOT getUser() in middleware.
+  // getSession() reads the JWT from the cookie — zero network round-trip.
+  // getUser() hits the Supabase auth server on every request, routinely
+  // exceeds Vercel's 1.5s middleware timeout → MIDDLEWARE_INVOCATION_TIMEOUT.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  // Protected routes
   const pathname = request.nextUrl.pathname;
+
+  // Protected routes — redirect unauthenticated users to login
   const isProtectedPath =
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/workspace") ||
     pathname.startsWith("/analyzer") ||
     pathname.startsWith("/settings");
-  
-  if (!user && isProtectedPath) {
+
+  if (!session && isProtectedPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  // Redirect logged-in users away from login
-  if (user && pathname.startsWith("/login")) {
+  // Redirect authenticated users away from login page
+  if (session && pathname.startsWith("/login")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
@@ -61,11 +64,10 @@ export const config = {
   matcher: [
     /*
      * Match all request paths EXCEPT:
-     * - _next/static (static files)
+     * - _next/static (Next.js static assets)
      * - _next/image (image optimization)
-     * - favicon.ico, sitemap.xml, robots.txt
-     * - Static assets (svg, png, jpg, etc.)
-     * - API routes (they authenticate themselves via createClient())
+     * - favicon.ico and static file extensions
+     * - /api/* routes (they self-authenticate — skip middleware entirely)
      */
     "/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
   ],
