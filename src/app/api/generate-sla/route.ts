@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
+export const maxDuration = 30;
+
+
 export async function POST(req: Request) {
   try {
     const { title, summary, price, estimates } = await req.json();

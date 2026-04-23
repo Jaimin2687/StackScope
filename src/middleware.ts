@@ -34,18 +34,21 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // Protected routes
-  const isProtectedPath = request.nextUrl.pathname.startsWith("/dashboard") || request.nextUrl.pathname.startsWith("/workspace") || request.nextUrl.pathname.startsWith("/analyzer") || request.nextUrl.pathname.startsWith("/settings");
+  const pathname = request.nextUrl.pathname;
+  const isProtectedPath =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/workspace") ||
+    pathname.startsWith("/analyzer") ||
+    pathname.startsWith("/settings");
   
-  if (
-    !user && isProtectedPath
-  ) {
+  if (!user && isProtectedPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
   // Redirect logged-in users away from login
-  if (user && request.nextUrl.pathname.startsWith("/login")) {
+  if (user && pathname.startsWith("/login")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
@@ -56,6 +59,14 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    /*
+     * Match all request paths EXCEPT:
+     * - _next/static (static files)
+     * - _next/image (image optimization)
+     * - favicon.ico, sitemap.xml, robots.txt
+     * - Static assets (svg, png, jpg, etc.)
+     * - API routes (they authenticate themselves via createClient())
+     */
+    "/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
   ],
 };

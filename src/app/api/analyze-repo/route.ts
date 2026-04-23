@@ -1,5 +1,17 @@
 import { NextResponse } from 'next/server';
 
+export const maxDuration = 30;
+
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { repoUrl } = await req.json();
@@ -22,12 +34,12 @@ export async function POST(req: Request) {
     }
 
     // 1. Fetch live repository configuration
-    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
+    const repoRes = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}`, {}, 8000);
     if (!repoRes.ok) return NextResponse.json({ error: "Repository not found or is strictly private." }, { status: 404 });
     const repoData = await repoRes.json();
 
-    // 2. Fetch live repository languages mapping
-    const langRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/languages`);
+    // 2. Fetch live repository languages mapping (parallel with repo fetch for speed)
+    const langRes = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}/languages`, {}, 8000);
     const languages = await langRes.json();
     const primaryLang = Object.keys(languages)[0] || "Unknown";
     

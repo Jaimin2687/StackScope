@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { transcribeAudioWithGroq } from "@/lib/transcribe";
 import { generateScopeWithFailover } from "@/lib/llm";
 
+// Extend Vercel function timeout for AI inference (max 60s on Hobby, 300s on Pro)
+export const maxDuration = 60;
+
 function buildFallbackTranscriptFromFile(file: File): string {
   const safeName = file.name?.replace(/\.[^.]+$/, "") || "audio-brief";
   const sizeMb = (file.size / 1024 / 1024).toFixed(2);
@@ -16,7 +19,7 @@ function buildFallbackTranscriptFromFile(file: File): string {
 
 function buildDeterministicScopeFromText(text: string) {
   const cleaned = (text || "").trim().slice(0, 2000);
-  const title = cleaned ? cleaned.split(/\n|\.|\!/)[0].slice(0, 80).replace(/[:\-]+\s*$/, "") || "New Web Platform" : "New Web Platform";
+  const title = cleaned ? cleaned.split(/\n|\.|!/)[0].slice(0, 80).replace(/[:\-]+\s*$/, "") || "New Web Platform" : "New Web Platform";
 
   return {
     providerUsed: "deterministic" as const,
@@ -58,6 +61,17 @@ function buildDeterministicScopeFromText(text: string) {
   };
 }
 
+/** Fetch a single GitHub URL with an AbortController timeout so we never hang */
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -80,7 +94,7 @@ export async function POST(req: NextRequest) {
       let transcript = "";
       try {
         transcript = await transcribeAudioWithGroq(audioFile);
-      } catch (err) {
+      } catch {
         transcript = buildFallbackTranscriptFromFile(audioFile);
       }
       inputText = `TRANSCRIPT:\n${transcript}`;
@@ -98,34 +112,14 @@ export async function POST(req: NextRequest) {
         repo = repo.replace(/[.,;!?]+$/, '').replace(/\.git$/, '');
         
         const filesToTry = [
-          "pom.xml", 
-          "build.gradle",
-          "build.gradle.kts",
-          "backend/pom.xml", 
-          "server/pom.xml", 
-          "package.json", 
-          "frontend/package.json", 
-          "backend/package.json",
-          "server/package.json",
-          "requirements.txt",
-          "pyproject.toml",
-          "setup.py",
-          "Pipfile",
-          "composer.json",
-          "CMakeLists.txt",
-          "Makefile",
-          "go.mod",
-          "go.sum",
-          "Cargo.toml",
-          "Gemfile",
-          "mix.exs",
-          "rebar.config",
-          "project.clj",
-          "Package.swift",
-          "pubspec.yaml",
-          "docker-compose.yml",
-          "docker-compose.yaml",
-          "Dockerfile"
+          "pom.xml", "build.gradle", "build.gradle.kts",
+          "backend/pom.xml", "server/pom.xml",
+          "package.json", "frontend/package.json", "backend/package.json", "server/package.json",
+          "requirements.txt", "pyproject.toml", "setup.py", "Pipfile",
+          "composer.json", "CMakeLists.txt", "Makefile",
+          "go.mod", "go.sum", "Cargo.toml", "Gemfile",
+          "mix.exs", "rebar.config", "project.clj", "Package.swift",
+          "pubspec.yaml", "docker-compose.yml", "docker-compose.yaml", "Dockerfile"
         ];
         
         let scrapedContext = "\n\nAnalyze the following repository files to determine the CURRENT tech stack and entities.\nDO NOT GUESS. Read the dependencies explicitly.\n\n";
@@ -139,62 +133,80 @@ export async function POST(req: NextRequest) {
           headers["Authorization"] = `Bearer ${process.env.GITHUB_TOKEN}`;
         }
         
-        await Promise.all(filesToTry.map(async (fileName) => {
-          try {
-            const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${fileName}`, { headers });
-            if (res.ok) {
-              const data = await res.json();
-              if (data.content && data.encoding === 'base64') {
-                const decoded = Buffer.from(data.content, 'base64').toString('utf-8');
-                console.log(`[Repo Analyzer Github Fetch] Successfully fetched ${fileName}. First 200 chars:`);
-                console.log(decoded.substring(0, 200));
-                scrapedContext += `--- RAW REPOSITORY FILE (${fileName}) ---\n${decoded.substring(0, 3500)}\n--- END FILE ---\n\n`;
-                filesFound++;
-              }
+        // Parallel fetches with individual timeouts — avoids one slow file blocking everyone
+        const fetchResults = await Promise.allSettled(
+          filesToTry.map(async (fileName) => {
+            const res = await fetchWithTimeout(
+              `https://api.github.com/repos/${owner}/${repo}/contents/${fileName}`,
+              { headers },
+              8000
+            );
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (data.content && data.encoding === 'base64') {
+              const decoded = Buffer.from(data.content, 'base64').toString('utf-8');
+              return { fileName, decoded };
             }
-          } catch (e) {}
-        }));
+            return null;
+          })
+        );
+
+        for (const result of fetchResults) {
+          if (result.status === 'fulfilled' && result.value) {
+            const { fileName, decoded } = result.value;
+            scrapedContext += `--- RAW REPOSITORY FILE (${fileName}) ---\n${decoded.substring(0, 3500)}\n--- END FILE ---\n\n`;
+            filesFound++;
+          }
+        }
 
         // If nothing found in the standard locations, try a recursive tree search (handles monorepos/turborepo layouts)
         if (filesFound === 0) {
           try {
-            const repoMeta = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+            const repoMeta = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}`, { headers }, 8000);
             if (repoMeta.ok) {
               const repoJson = await repoMeta.json();
               const defaultBranch = repoJson.default_branch || 'main';
-              const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`, { headers });
+              const treeRes = await fetchWithTimeout(
+                `https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`,
+                { headers },
+                10000
+              );
               if (treeRes.ok) {
                 const treeJson = await treeRes.json();
                 const blobs = Array.isArray(treeJson.tree) ? treeJson.tree : [];
-                // find candidate paths that look like config files (added build.gradle.kts to search parameters)
                 const candidates = blobs.filter((t: any) => t.type === 'blob' && /(pom\.xml|package\.json|build\.gradle|build\.gradle\.kts|application\.properties|requirements\.txt|pyproject\.toml|setup\.py|Pipfile|composer\.json|CMakeLists\.txt|Makefile|go\.mod|go\.sum|Cargo\.toml|Gemfile|mix\.exs|rebar\.config|project\.clj|Package\.swift|pubspec\.yaml|docker-compose\.ya?ml|Dockerfile)$/i.test(t.path));
                 
-                // Sort candidates by length of path to prioritize root configurations over deeply nested dependencies
                 candidates.sort((a: any, b: any) => a.path.length - b.path.length);
-                const topCandidates = candidates.slice(0, 10); // Don't fetch more than 10 files to prevent timeout
+                const topCandidates = candidates.slice(0, 8); // Cap at 8 files to be safe
                 
-                for (const c of topCandidates) {
-                  try {
-                    const path = c.path;
-                    const fileRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, { headers });
-                    if (fileRes.ok) {
-                      const data = await fileRes.json();
-                      if (data.content && data.encoding === 'base64') {
-                        const decoded = Buffer.from(data.content, 'base64').toString('utf-8');
-                        console.log(`[Repo Analyzer Github Fetch] Successfully fetched ${path} (from tree). First 200 chars:`);
-                        console.log(decoded.substring(0, 200));
-                        scrapedContext += `--- RAW REPOSITORY FILE (${path}) ---\n${decoded.substring(0, 3500)}\n--- END FILE ---\n\n`;
-                        filesFound++;
-                      }
+                const treeResults = await Promise.allSettled(
+                  topCandidates.map(async (c: any) => {
+                    const fileRes = await fetchWithTimeout(
+                      `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(c.path)}`,
+                      { headers },
+                      8000
+                    );
+                    if (!fileRes.ok) return null;
+                    const data = await fileRes.json();
+                    if (data.content && data.encoding === 'base64') {
+                      const decoded = Buffer.from(data.content, 'base64').toString('utf-8');
+                      return { path: c.path, decoded };
                     }
-                  } catch (e) {
-                    // ignore individual file fetch errors
+                    return null;
+                  })
+                );
+
+                for (const result of treeResults) {
+                  if (result.status === 'fulfilled' && result.value) {
+                    const { path, decoded } = result.value;
+                    scrapedContext += `--- RAW REPOSITORY FILE (${path}) ---\n${decoded.substring(0, 3500)}\n--- END FILE ---\n\n`;
+                    filesFound++;
                   }
                 }
               }
             }
-          } catch (e) {
-            // ignore tree lookup errors - we already attempt best-effort collection
+          } catch {
+            // ignore tree lookup errors
           }
         }
 
@@ -212,81 +224,90 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Run AI generation immediately — this is the bottleneck
     const { scope: scopeData, providerUsed } = await generateScopeWithFailover(
       { kind: "text", text: inputText },
       targetLanguage,
       isMigration
     );
 
-    // Get or Create user's workspace/project
-    const { data: orgMember } = await supabase
-      .from('organization_members')
-      .select('org_id')
-      .eq('user_id', user.id)
-      .limit(1)
-      .single();
+    // Return result to user immediately — do DB writes in the background (non-blocking)
+    const responsePayload = NextResponse.json({ success: true, scope: { ...scopeData, providerUsed } });
 
-    let projectId = null;
-    let orgId = orgMember?.org_id;
-
-    if (!orgId) {
-      // Fallback: This user might not have hit the triggers.
-      const { data: newOrg } = await supabase
-        .from('organizations')
-        .insert({ name: 'Personal Workspace', slug: 'workspace-' + Date.now() })
-        .select('id')
-        .single();
-      
-      if (newOrg) {
-        orgId = newOrg.id;
-        await supabase.from('organization_members').insert({
-          org_id: orgId,
-          user_id: user.id,
-          role: 'owner'
-        });
-      }
-    }
-
-    if (orgId) {
-      const { data: existingProject } = await supabase
-        .from('projects')
-        .select('id')
-        .eq('org_id', orgId)
-        .limit(1)
-        .single();
-
-      if (existingProject) {
-        projectId = existingProject.id;
-      } else {
-        const { data: newProject } = await supabase
-          .from('projects')
-          .insert({
-            name: 'Default Project',
-            org_id: orgId,
-            description: 'Main container for scopes'
-          })
-          .select('id')
+    // Fire-and-forget: persist to DB without making the user wait
+    (async () => {
+      try {
+        const { data: orgMember } = await supabase
+          .from('organization_members')
+          .select('org_id')
+          .eq('user_id', user.id)
+          .limit(1)
           .single();
-        if (newProject) {
-          projectId = newProject.id;
+
+        let projectId = null;
+        let orgId = orgMember?.org_id;
+
+        if (!orgId) {
+          const { data: newOrg } = await supabase
+            .from('organizations')
+            .insert({ name: 'Personal Workspace', slug: 'workspace-' + Date.now() })
+            .select('id')
+            .single();
+          
+          if (newOrg) {
+            orgId = newOrg.id;
+            await supabase.from('organization_members').insert({
+              org_id: orgId,
+              user_id: user.id,
+              role: 'owner'
+            });
+          }
         }
+
+        if (orgId) {
+          const { data: existingProject } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('org_id', orgId)
+            .limit(1)
+            .single();
+
+          if (existingProject) {
+            projectId = existingProject.id;
+          } else {
+            const { data: newProject } = await supabase
+              .from('projects')
+              .insert({
+                name: 'Default Project',
+                org_id: orgId,
+                description: 'Main container for scopes'
+              })
+              .select('id')
+              .single();
+            if (newProject) {
+              projectId = newProject.id;
+            }
+          }
+        }
+
+        await supabase.from("client_scopes").insert({
+          user_id: user.id,
+          project_id: projectId,
+          status: 'draft',
+          raw_brief: rawBriefCache,
+          target_language: targetLanguage,
+          generated_proposal: {
+            providerUsed,
+            ...scopeData
+          },
+          generated_sql: scopeData.sql_schema,
+        });
+      } catch (dbErr) {
+        console.error("[generate-scope] Background DB write failed:", dbErr);
       }
-    }
+    })();
 
-    await supabase.from("client_scopes").insert({
-      user_id: user.id,
-      project_id: projectId,
-      status: 'draft',
-      raw_brief: rawBriefCache,
-      target_language: targetLanguage,
-      generated_proposal: {
-        providerUsed,
-        ...scopeData
-      },
-      generated_sql: scopeData.sql_schema,
-    });
-
-    return NextResponse.json({ success: true, scope: { ...scopeData, providerUsed } });
+    return responsePayload;
 
   } catch (error: any) {
     console.error("API Route Error:", error);

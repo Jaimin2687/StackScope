@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import mermaid from "mermaid";
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 interface MermaidDiagramProps {
@@ -9,42 +8,48 @@ interface MermaidDiagramProps {
 }
 
 export function MermaidDiagram({ chart }: MermaidDiagramProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const [svgStr, setSvgStr] = useState<string>("");
   const [error, setError] = useState<boolean>(false);
 
   useEffect(() => {
     if (!chart) return;
-    
-    // Initialize mermaid settings
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: "dark",
-      securityLevel: "loose",
-      fontFamily: "var(--font-mono), monospace",
-      themeVariables: {
-        primaryColor: "#0a0a0a",
-        primaryTextColor: "#ffffff",
-        primaryBorderColor: "#333333",
-        lineColor: "#666666",
-        secondaryColor: "#111111",
-        tertiaryColor: "#1a1a1a",
-      }
-    });
 
     const renderGraph = async () => {
       try {
         setError(false);
+
+        // Dynamically import mermaid — it's ~1MB and should never be in the initial bundle
+        const mermaid = (await import("mermaid")).default;
+
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "dark",
+          securityLevel: "loose",
+          fontFamily: "var(--font-mono), monospace",
+          themeVariables: {
+            primaryColor: "#0a0a0a",
+            primaryTextColor: "#ffffff",
+            primaryBorderColor: "#333333",
+            lineColor: "#666666",
+            secondaryColor: "#111111",
+            tertiaryColor: "#1a1a1a",
+          },
+        });
+
         // Clean up common AI hallucinations in Mermaid syntax
         let cleanChart = chart
-          .replace(/```mermaid\n?/g, "") // remove code block fences
+          .replace(/```mermaid\n?/g, "")
           .replace(/```\n?/g, "")
-          .replace(/-->\|([^|]+)\|>/g, "-->|$1|") // fix invalid edge labels like `-->|label|>`
-          .replace(/^(graph\s+[A-Z]+);/i, "$1\n") // clean semicolons directly after graph declaration
+          .replace(/-->\|([^|]+)\|>/g, "-->|$1|")
+          .replace(/^(graph\s+[A-Z]+);/i, "$1\n")
           .trim();
 
-        // Check if the AI forgot to declare the graph type (e.g., started with node immediately)
-        if (!/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|journey|mindmap|requirementDiagram)/i.test(cleanChart)) {
+        // Ensure graph type declaration exists
+        if (
+          !/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|journey|mindmap|requirementDiagram)/i.test(
+            cleanChart
+          )
+        ) {
           cleanChart = `graph TD\n${cleanChart}`;
         }
 
@@ -70,7 +75,7 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
   }
 
   if (!svgStr) {
-    return <div className="h-48 animate-pulse bg-[#111] rounded-md border border-[#222]"></div>;
+    return <div className="h-48 animate-pulse bg-[#111] rounded-md border border-[#222]" />;
   }
 
   return (
@@ -80,10 +85,9 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="flex justify-center items-center w-full p-6 bg-[#050505] rounded-xl border border-[#222] overflow-x-auto custom-scrollbar"
     >
-      <div 
+      <div
         id="architecture-diagram"
-        ref={containerRef}
-        dangerouslySetInnerHTML={{ __html: svgStr }} 
+        dangerouslySetInnerHTML={{ __html: svgStr }}
         className="w-full flex justify-center [&>svg]:max-w-full [&>svg]:h-auto"
       />
     </motion.div>

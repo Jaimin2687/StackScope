@@ -4,6 +4,9 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { decrypt } from "@/lib/encryption";
 
+export const maxDuration = 30;
+
+
 export async function POST(req: Request) {
   try {
     const { schema } = await req.json();

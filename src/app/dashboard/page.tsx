@@ -24,32 +24,39 @@ export default async function DashboardPage({ searchParams }: Props) {
 
   const { data: scopes, error } = await supabase
     .from("client_scopes")
-    .select("*")
+    .select("id, is_deleted, deleted_at, created_at, status, raw_brief, target_language, generated_proposal, generated_sql, updated_at")
     .order("created_at", { ascending: false });
 
   if (error) console.error("Error fetching scopes:", JSON.stringify(error, null, 2));
 
   const userScopes = (scopes as ClientScope[]) || [];
   
-  // Lazy Garbage Collection & Filtering
+  // Fast client-side filtering — no blocking DB mutations during SSR
   const now = new Date();
   const activeScopes: ClientScope[] = [];
   const binScopes: ClientScope[] = [];
+  const expiredIds: string[] = [];
 
   for (const scope of userScopes) {
     if (scope.is_deleted) {
       const deletedAt = new Date(scope.deleted_at || scope.created_at);
       const diffDays = (now.getTime() - deletedAt.getTime()) / (1000 * 3600 * 24);
       
-      // Auto delete if in bin for more than 15 days
       if (diffDays > 15) {
-         await supabase.from('client_scopes').delete().eq('id', scope.id);
-         continue; 
+        expiredIds.push(scope.id);
+        continue; 
       }
       binScopes.push(scope);
     } else {
       activeScopes.push(scope);
     }
+  }
+
+  // Fire-and-forget: clean up expired items without blocking the page render
+  if (expiredIds.length > 0) {
+    supabase.from('client_scopes').delete().in('id', expiredIds).then(({ error }) => {
+      if (error) console.error("[dashboard] Cleanup delete failed:", error);
+    });
   }
 
   const displayScopes = isBin ? binScopes : activeScopes;

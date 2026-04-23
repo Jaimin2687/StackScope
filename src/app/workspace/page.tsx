@@ -4,13 +4,24 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { SideNav } from "@/components/side-nav";
-import { AudioDropzone } from "@/components/dropzone";
-import { ResultsView } from "@/components/results-view";
 import { ProcessingLoader } from "@/components/processing-loader";
-import { Globe, FileText, LayoutTemplate, Send, Zap } from "lucide-react";
+import { Globe, FileText, Send, Zap } from "lucide-react";
 import { SUPPORTED_LANGUAGES, type GeneratedScope } from "@/lib/types";
 import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
+import dynamic from "next/dynamic";
+
+// Lazy-load heavy components — they're not needed until user interacts
+const AudioDropzone = dynamic(
+  () => import("@/components/dropzone").then((m) => ({ default: m.AudioDropzone })),
+  { ssr: false, loading: () => <div className="h-24 bg-[#111] rounded-md border border-[#333] animate-pulse" /> }
+);
+
+const ResultsView = dynamic(
+  () => import("@/components/results-view").then((m) => ({ default: m.ResultsView })),
+  { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center"><div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" /></div> }
+);
+
 
 function WorkspaceContent() {
   const searchParams = useSearchParams();
