@@ -63,12 +63,12 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths EXCEPT:
-     * - _next/static (Next.js static assets)
-     * - _next/image (image optimization)
-     * - favicon.ico and static file extensions
-     * - /api/* routes (they self-authenticate — skip middleware entirely)
+     * Only run middleware on paths that actually require authentication checks
      */
-    "/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
+    "/dashboard/:path*",
+    "/workspace/:path*",
+    "/analyzer/:path*",
+    "/settings/:path*",
+    "/login"
   ],
 };
