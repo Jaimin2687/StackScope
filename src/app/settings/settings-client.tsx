@@ -26,6 +26,7 @@ export function SettingsClientView({
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [payoutName, setPayoutName] = useState(initialName || initialEmail.split("@")[0] || "");
+  const [payoutPhone, setPayoutPhone] = useState("");
   const [payoutAccountId, setPayoutAccountId] = useState(initialRazorpayAccountId);
   const [payoutLoading, setPayoutLoading] = useState(false);
   const [payoutStatus, setPayoutStatus] = useState<"idle" | "success" | "error">("idle");
@@ -66,6 +67,11 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`;
 
   const handleRazorpayOnboarding = async () => {
     if (!initialEmail) return;
+    if (!payoutPhone.trim()) {
+      setPayoutError("Phone number is required.");
+      setPayoutStatus("error");
+      return;
+    }
     setPayoutLoading(true);
     setPayoutStatus("idle");
     setPayoutError(null);
@@ -77,12 +83,14 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`;
         body: JSON.stringify({
           name: payoutName || initialEmail.split("@")[0] || "Freelancer",
           email: initialEmail,
+          phone: payoutPhone,
         }),
       });
 
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload?.error || "Failed to create Razorpay account.");
+        const hint = payload?.hint ? ` ${payload.hint}` : "";
+        throw new Error(`${payload?.error || "Failed to create Razorpay account."}${hint}`);
       }
 
       setPayoutAccountId(payload.account_id || "");
@@ -226,6 +234,22 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`}</code>
                 value={payoutName}
                 onChange={(e) => setPayoutName(e.target.value)}
                 placeholder="e.g. Jane Doe"
+                className="w-full h-10 rounded-md border border-[#333] bg-[#050505] px-3 text-sm text-white placeholder:text-neutral-700 focus:border-[#555] focus:outline-none transition-colors"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="settings-razorpay-phone"
+                className="text-xs text-neutral-500 font-medium uppercase tracking-wider"
+              >
+                Contact Phone
+              </label>
+              <input
+                id="settings-razorpay-phone"
+                type="tel"
+                value={payoutPhone}
+                onChange={(e) => setPayoutPhone(e.target.value)}
+                placeholder="e.g. 9123456789"
                 className="w-full h-10 rounded-md border border-[#333] bg-[#050505] px-3 text-sm text-white placeholder:text-neutral-700 focus:border-[#555] focus:outline-none transition-colors"
               />
             </div>
