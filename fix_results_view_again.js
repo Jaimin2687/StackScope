@@ -37,7 +37,7 @@ const chatUI = `
               <input
                 disabled={isPatching}
                 type="text"
-                placeholder="e.g. 'Add Stripe integration' or 'Remove websockets'"
+                placeholder="e.g. 'Add payment integration' or 'Remove websockets'"
                 className="w-full bg-[#0a0a0a] border border-[#333] focus:border-indigo-500/50 rounded-xl px-4 py-3 pb-8 text-sm text-neutral-200 placeholder:text-neutral-600 focus:outline-none transition-all disabled:opacity-50"
                 value={chatMessage}
                 onChange={(e) => setChatMessage(e.target.value)}

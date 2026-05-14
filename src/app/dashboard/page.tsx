@@ -125,10 +125,10 @@ export default async function DashboardPage({ searchParams }: Props) {
                   </div>
                   <h3 className="text-base font-semibold text-white mb-2 flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_10px_2px_rgba(99,102,241,0.5)]" />
-                    Stripe Milestones API
+                    Razorpay Milestones API
                   </h3>
                   <p className="text-sm text-neutral-400 leading-relaxed relative z-10">
-                    Live production of legally binding contracts and Milestone checkout sessions routing to your Stripe account.
+                    Live production of legally binding contracts and milestone checkout sessions routing to your Razorpay account.
                   </p>
                 </div>
 

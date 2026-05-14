@@ -9,14 +9,27 @@ interface Props {
   initialEmail: string;
   initialUrl?: string;
   initialKey?: string;
+  initialName?: string;
+  initialRazorpayAccountId?: string;
 }
 
-export function SettingsClientView({ initialEmail, initialUrl = "", initialKey = "" }: Props) {
+export function SettingsClientView({
+  initialEmail,
+  initialUrl = "",
+  initialKey = "",
+  initialName = "",
+  initialRazorpayAccountId = "",
+}: Props) {
   const [supabaseUrl, setSupabaseUrl] = useState(initialUrl);
   const [supabaseKey, setSupabaseKey] = useState(initialKey);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [payoutName, setPayoutName] = useState(initialName || initialEmail.split("@")[0] || "");
+  const [payoutAccountId, setPayoutAccountId] = useState(initialRazorpayAccountId);
+  const [payoutLoading, setPayoutLoading] = useState(false);
+  const [payoutStatus, setPayoutStatus] = useState<"idle" | "success" | "error">("idle");
+  const [payoutError, setPayoutError] = useState<string | null>(null);
 
   const handleSave = async () => {
     setSaving(true);
@@ -51,14 +64,51 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`;
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleRazorpayOnboarding = async () => {
+    if (!initialEmail) return;
+    setPayoutLoading(true);
+    setPayoutStatus("idle");
+    setPayoutError(null);
+
+    try {
+      const response = await fetch("/api/razorpay/onboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: payoutName || initialEmail.split("@")[0] || "Freelancer",
+          email: initialEmail,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to create Razorpay account.");
+      }
+
+      setPayoutAccountId(payload.account_id || "");
+      setPayoutStatus("success");
+    } catch (error: any) {
+      setPayoutError(error?.message || "Failed to create Razorpay account.");
+      setPayoutStatus("error");
+    } finally {
+      setPayoutLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-10">
       {/* Profile Section */}
       <section className="space-y-6">
         <h2 className="text-lg font-medium text-white border-b border-[#222] pb-2">Profile Details</h2>
         <div className="flex flex-col gap-2 max-w-md">
-          <label className="text-xs text-neutral-500 font-medium uppercase tracking-wider">Email Address</label>
+          <label
+            htmlFor="settings-email"
+            className="text-xs text-neutral-500 font-medium uppercase tracking-wider"
+          >
+            Email Address
+          </label>
           <input 
+            id="settings-email"
             type="text" 
             disabled 
             value={initialEmail} 
@@ -79,8 +129,14 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`;
           {/* Form */}
           <div className="space-y-5">
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-neutral-500 font-medium uppercase tracking-wider">Project URL</label>
+              <label
+                htmlFor="settings-supabase-url"
+                className="text-xs text-neutral-500 font-medium uppercase tracking-wider"
+              >
+                Project URL
+              </label>
               <input 
+                id="settings-supabase-url"
                 type="text" 
                 value={supabaseUrl}
                 onChange={(e) => setSupabaseUrl(e.target.value)}
@@ -89,8 +145,14 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`;
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-neutral-500 font-medium uppercase tracking-wider">Service Role OR Anon Key</label>
+              <label
+                htmlFor="settings-supabase-key"
+                className="text-xs text-neutral-500 font-medium uppercase tracking-wider"
+              >
+                Service Role OR Anon Key
+              </label>
               <input 
+                id="settings-supabase-key"
                 type="password" 
                 value={supabaseKey}
                 onChange={(e) => setSupabaseKey(e.target.value)}
@@ -138,6 +200,68 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO anon;
 GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`}</code>
               </pre>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Razorpay Payouts Section */}
+      <section className="space-y-6">
+        <div className="border-b border-[#222] pb-2">
+          <h2 className="text-lg font-medium text-white">Razorpay Payouts</h2>
+          <p className="text-xs text-neutral-500 mt-1">Create or view your payout account for milestone split payments.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-5">
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="settings-razorpay-name"
+                className="text-xs text-neutral-500 font-medium uppercase tracking-wider"
+              >
+                Payout Display Name
+              </label>
+              <input
+                id="settings-razorpay-name"
+                type="text"
+                value={payoutName}
+                onChange={(e) => setPayoutName(e.target.value)}
+                placeholder="e.g. Jane Doe"
+                className="w-full h-10 rounded-md border border-[#333] bg-[#050505] px-3 text-sm text-white placeholder:text-neutral-700 focus:border-[#555] focus:outline-none transition-colors"
+              />
+            </div>
+
+            <button
+              onClick={handleRazorpayOnboarding}
+              disabled={payoutLoading || !payoutName}
+              className="flex w-fit items-center gap-2 px-4 py-2 bg-white hover:bg-neutral-200 text-black text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+            >
+              {payoutLoading ? "Creating payout account..." : payoutAccountId ? "Refresh Payout Account" : "Create Razorpay Payout Account"}
+            </button>
+
+            {payoutAccountId ? (
+              <p className="text-xs text-green-400">Connected Razorpay account: {payoutAccountId}</p>
+            ) : (
+              <p className="text-xs text-neutral-500">No payout account connected yet.</p>
+            )}
+
+            {payoutStatus === "success" && (
+              <p className="text-xs text-green-400 flex items-center gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Razorpay account created successfully.
+              </p>
+            )}
+
+            {payoutStatus === "error" && payoutError && (
+              <p className="text-xs text-red-400">{payoutError}</p>
+            )}
+          </div>
+
+          <div className="p-5 rounded-lg border border-[#222] bg-[#0a0a0a]">
+            <h3 className="text-sm font-medium text-white mb-2">How payouts work</h3>
+            <p className="text-[13px] text-neutral-400 leading-relaxed">
+              StackScope creates a Razorpay Route account tied to your profile. When clients pay milestones,
+              92% is routed to your linked account and 8% is retained as the platform fee. You can reconnect
+              or update the name anytime.
+            </p>
           </div>
         </div>
       </section>

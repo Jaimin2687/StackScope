@@ -1,50 +1,63 @@
-import { NextResponse } from 'next/server';
-import Stripe from 'stripe';
+import { NextResponse } from "next/server";
+import Razorpay from "razorpay";
 import { createClient } from "@/lib/supabase/server";
+import { getClientIp, isJsonRequest, isSameOrigin, rateLimit } from "@/lib/security";
+
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID || "",
+    key_secret: process.env.RAZORPAY_KEY_SECRET || "",
+});
 
 export async function POST(req: Request) {
   try {
+        if (!isJsonRequest(req)) {
+            return NextResponse.json({ error: "Unsupported content type" }, { status: 415 });
+        }
+
+        if (!isSameOrigin(req)) {
+            return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+        }
+
+        const ip = getClientIp(req);
+        const limiter = rateLimit({ key: `check-payment-status:${ip}`, limit: 20, windowMs: 60_000 });
+        if (!limiter.allowed) {
+            return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+        }
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { scopeId, currentScopeObj } = await req.json();
-    
-    if (!process.env.STRIPE_SECRET_KEY) {
-        return NextResponse.json({ payment_status: currentScopeObj?.payment_status || 'pending', phases: currentScopeObj?.payment_phases || [] });
-    }
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' as any });
+        if (!scopeId) {
+            return NextResponse.json({ error: "Missing scopeId" }, { status: 400 });
+        }
+
+        if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+            return NextResponse.json({ payment_status: currentScopeObj?.payment_status || "pending", phases: currentScopeObj?.payment_phases || [] });
+        }
     
     let phases = currentScopeObj?.payment_phases || [];
-    
-    // Migrate legacy format into phase array
-    if (phases.length === 0 && currentScopeObj?.payment_link_id) {
-       phases.push({
-           phase: 1, 
-           name: "Phase 1: Project Kickoff (25%)",
-           url: currentScopeObj.payment_link_url,
-           id: currentScopeObj.payment_link_id,
-           status: currentScopeObj.payment_status || 'pending'
-       });
-    }
 
     let updated = false;
 
     // Check all pending phases
     for (let p of phases) {
-        if (p.status === 'pending') {
-            try {
-                const sessions = await stripe.checkout.sessions.list({ payment_link: p.id });
-                const isPaid = sessions.data.some(s => s.payment_status === 'paid');
-                if (isPaid) {
-                    p.status = 'paid';
-                    updated = true;
+            if (p.status === "pending") {
+                try {
+                    const linkId = p.pl_id || p.id;
+                    if (!linkId) continue;
+                    const paymentLink: any = await razorpay.paymentLink.fetch(linkId);
+                    const status = String(paymentLink?.status || "").toLowerCase();
+                    if (status === "paid") {
+                        p.status = "paid";
+                        updated = true;
+                    }
+                } catch (err) {
+                    console.error("Error looking up Razorpay payment link:", p.pl_id || p.id, err);
                 }
-            } catch (err) {
-                console.error("Error looking up phase sessions:", p.id, err);
             }
-        }
     }
 
     if (updated) {

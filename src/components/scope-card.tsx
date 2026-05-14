@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { downloadScopePDF } from "@/lib/pdf-generator";
-import { ScopeCheckoutModal } from "./ScopeCheckoutModal";
 
 interface Props {
   scope: any; // Database row type
@@ -30,7 +29,6 @@ export function ScopeCard({ scope, isBin }: Props) {
   const [slaUrl, setSlaUrl] = useState<string | null>(null);
   const [localPhases, setLocalPhases] = useState<any[]>(content?.payment_phases || []);
   const [isCopied, setIsCopied] = useState(false);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(content?.payment_status || null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
@@ -219,7 +217,7 @@ export function ScopeCard({ scope, isBin }: Props) {
                   disabled={isGeneratingSLA}
                   onClick={generateSLA}
                   className={`p-1.5 hover:bg-[#222] rounded-md transition-colors ${isGeneratingSLA ? 'text-emerald-400/50 cursor-not-allowed' : 'text-neutral-500 hover:text-emerald-400'} flex-shrink-0`}
-                  title="Generate SLA & Stripe Payment Links"
+                  title="Generate SLA & Razorpay Payment Links"
                 >
                   {isGeneratingSLA ? <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" /> : <CreditCard className="w-4 h-4" />}
                 </button>
@@ -293,18 +291,6 @@ export function ScopeCard({ scope, isBin }: Props) {
         </Link>
       )}
 
-      {/* SLA Checkout Modal */}
-      <AnimatePresence>
-        {isPaymentModalOpen && content && (
-          <ScopeCheckoutModal
-            title={content.proposal?.title || 'Scope SLA'}
-            summary={content.proposal?.summary || ''}
-            price={content.estimates?.base_cost_inr?.toString() || '0'}
-            onClose={() => setIsPaymentModalOpen(false)}
-          />
-        )}
-      </AnimatePresence>
-
       {/* SLA Popup Modal */}
       <AnimatePresence>
         {slaUrl && (
@@ -335,7 +321,7 @@ export function ScopeCard({ scope, isBin }: Props) {
               
               <div className="p-6 space-y-6 text-sm text-neutral-400">
                 <p>
-                  Your legally binding Stripe Payment Links for this scope are ready. Share them securely with your client. They will remain active until the invoice is paid.
+                  Your legally binding Razorpay payment links for this scope are ready. Share them securely with your client. They will remain active until the invoice is paid.
                 </p>
 
                 {localPhases.length > 0 ? (
@@ -373,7 +359,7 @@ export function ScopeCard({ scope, isBin }: Props) {
                           <input 
                             type="text" 
                             readOnly 
-                            title="Stripe SLA URL"
+                            title="Razorpay SLA URL"
                             value={localPhases[activePhaseIndex].url || ''} 
                             className="w-full bg-[#050505] border border-[#333] rounded-lg py-3 px-4 text-white pr-10 outline-none select-all focus:border-indigo-500/50 transition-colors"
                           />
@@ -409,7 +395,7 @@ export function ScopeCard({ scope, isBin }: Props) {
                       <input 
                         type="text" 
                         readOnly 
-                        title="Stripe SLA URL"
+                        title="Razorpay SLA URL"
                         value={slaUrl!} 
                         className="w-full bg-[#050505] border border-[#333] rounded-lg py-3 px-4 text-white pr-10 outline-none select-all focus:border-indigo-500/50 transition-colors"
                       />

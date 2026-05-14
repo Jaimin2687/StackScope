@@ -21,7 +21,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-SSR-green?style=flat-square&logo=supabase)](https://supabase.com/)
 [![Gemini](https://img.shields.io/badge/Gemini-2.0%20Flash-orange?style=flat-square&logo=google)](https://deepmind.google/technologies/gemini/)
-[![Stripe](https://img.shields.io/badge/Stripe-Native-purple?style=flat-square&logo=stripe)](https://stripe.com/)
+[![Razorpay](https://img.shields.io/badge/Razorpay-Route-blue?style=flat-square&logo=razorpay)](https://razorpay.com/)
 [![Tailwind](https://img.shields.io/badge/Tailwind-v4-teal?style=flat-square&logo=tailwindcss)](https://tailwindcss.com/)
 
 </div>
@@ -39,7 +39,7 @@ You describe what you want to build — by typing or speaking — and StackScope
 - Renders a **Mermaid.js architecture diagram** of the entire system topology
 - Computes **unit economics** (hosting costs, break-even thresholds, profit margins) calibrated to the Indian market
 - Generates a branded **PDF artifact** ready to send to clients
-- Creates **Stripe Payment Links** for multi-phase milestone billing
+- Creates **Razorpay Payment Links** for multi-phase milestone billing
 - Deploys the generated SQL schema **directly to your Supabase project** with one click
 
 ---
@@ -63,7 +63,7 @@ The primary capability of StackScope. Accepts any text or audio brief and genera
 Upload an audio recording of a client meeting, a voice memo, or any spoken idea. StackScope uses **Groq Whisper (`whisper-large-v3`)** to transcribe it and then pipes the transcript directly into the scoping engine.
 
 ### 💬 AI Chat Iteration (Live Patching)
-After generating a scope, a floating chat box lets you refine it in real-time. Say *"Add Stripe integration"* or *"Remove the websocket layer"* and the AI surgically updates only the relevant sections, preserving everything else. Protected by a guardrail that rejects off-topic requests (poems, roleplay, etc.).
+After generating a scope, a floating chat box lets you refine it in real-time. Say *"Add payment integration"* or *"Remove the websocket layer"* and the AI surgically updates only the relevant sections, preserving everything else. Protected by a guardrail that rejects off-topic requests (poems, roleplay, etc.).
 
 ### 🐙 Deep-Scope Analyzer (GitHub Intel Ingestion)
 Submit any GitHub repository URL. StackScope:
@@ -75,15 +75,15 @@ Submit any GitHub repository URL. StackScope:
 ### 🚀 1-Click Schema Deployment
 Connect your Supabase project once (credentials are AES-256-GCM encrypted before storage). From then on, click **"1-Click Deploy"** in the SQL Schema tab to execute the AI-generated DDL directly against your live Supabase database — no copy-paste, no SQL editor.
 
-### 💳 Multi-Phase Stripe Billing
-Generate legally-binding **Stripe Payment Links** for multi-phase project invoicing directly from any saved scope. Phase 1, Phase 2, etc. Each link is tied to a milestone. The UI tracks `PAID` / `PENDING` statuses per phase with real-time Stripe sync.
+### 💳 Multi-Phase Razorpay Billing
+Generate legally-binding **Razorpay Payment Links** for multi-phase project invoicing directly from any saved scope. Phase 1, Phase 2, etc. Each link is tied to a milestone. The UI tracks `PAID` / `PENDING` statuses per phase with Razorpay sync.
 
 ### 📄 Luxury PDF Artifacts
 Export any scope as a branded A4 PDF:
 - Black premium cover page with project title and executive summary
 - Objectives, resource estimates, and tech stack breakdown
 - Rasterized Mermaid architecture diagram embedded inline
-- Stripe payment button embedded directly in the PDF
+- Razorpay payment link embedded directly in the PDF
 - Branded footer with date and page numbers
 
 ### ✏️ Interactive Live Quoting (Inline Editing)
@@ -133,9 +133,9 @@ Cookie-based Supabase SSR authentication with Next.js middleware protecting `/wo
 ### 💵 Payments
 | Layer | Technology |
 |---|---|
-| Server SDK | Stripe Node.js SDK v21 |
-| Client SDK | `@stripe/react-stripe-js` + `@stripe/stripe-js` |
-| Products Used | Stripe Payment Links (multi-phase milestone billing) |
+| Server SDK | Razorpay Node.js SDK |
+| Client SDK | Razorpay hosted checkout links |
+| Products Used | Razorpay Payment Links (multi-phase milestone billing) |
 | Client Experience | Embedded checkout, never leaving the domain |
 
 ### 📄 Document Generation
@@ -164,8 +164,8 @@ Cookie-based Supabase SSR authentication with Next.js middleware protecting `/wo
 | `/dashboard` | Protected | Saved scopes history and soft-delete bin |
 | `/settings` | Protected | Profile management and encrypted Supabase deployment credentials |
 | `/pricing` | Public | Tiered subscription pricing (monthly / yearly) |
-| `/checkout` | Public | Stripe Embedded Checkout session wrapper |
-| `/payment` | Public | Stripe Payment Elements for one-off SLA authorizations |
+| `/checkout` | Public | Subscription request flow (Razorpay invoice delivery) |
+| `/payment` | Public | Payment info page for Razorpay milestone links |
 
 ### API Routes
 
@@ -175,11 +175,9 @@ Cookie-based Supabase SSR authentication with Next.js middleware protecting `/wo
 | `/api/patch-scope` | POST | Chat-based surgical scope mutation |
 | `/api/analyze-repo` | POST | GitHub repo health scoring and migration blueprint generation |
 | `/api/deploy-schema` | POST | Executes AI-generated SQL DDL against linked Supabase project |
-| `/api/generate-payment-link` | POST | Creates Stripe Products, Prices, and Payment Links for multi-phase billing |
-| `/api/check-payment-status` | POST | Polls Stripe to sync phase payment statuses |
-| `/api/generate-sla` | POST | Creates a Stripe Payment Link for SLA authorization, embeds in PDF |
-| `/api/create-subscription` | POST | Generates Stripe Embedded Checkout `client_secret` for Pro subscriptions |
-| `/api/create-payment-intent` | POST | Generates standard Stripe `client_secret` for Native Payment Elements |
+| `/api/generate-payment-link` | POST | Creates Razorpay Orders + Payment Links for multi-phase billing |
+| `/api/check-payment-status` | POST | Polls Razorpay to sync phase payment statuses |
+| `/api/razorpay/onboard` | POST | Creates Razorpay Route accounts for freelancer payouts |
 | `/api/docs` | GET | API documentation endpoint |
 
 ---
@@ -198,18 +196,16 @@ src/
 │   ├── settings/                 # Profile + deployment config
 │   ├── login/                    # Auth page
 │   ├── pricing/                  # Subscription tiers
-│   ├── checkout/                 # Stripe Embedded Checkout
-│   ├── payment/                  # Stripe Payment Elements
+│   ├── checkout/                 # Razorpay invoice request flow
+│   ├── payment/                  # Razorpay milestone info
 │   └── api/
 │       ├── generate-scope/       # Primary LLM inference
 │       ├── patch-scope/          # Chat-based scope mutation
 │       ├── analyze-repo/         # GitHub health scoring
 │       ├── deploy-schema/        # Supabase SQL execution tunnel
-│       ├── generate-payment-link/  # Stripe multi-phase billing
-│       ├── check-payment-status/ # Stripe status polling
-│       ├── generate-sla/         # SLA payment link generation
-│       ├── create-subscription/  # Stripe subscription checkout
-│       ├── create-payment-intent/  # Stripe Payment Intent
+│       ├── generate-payment-link/  # Razorpay multi-phase billing
+│       ├── check-payment-status/ # Razorpay status polling
+│       ├── razorpay/onboard/      # Razorpay Route onboarding
 │       └── docs/                 # API docs
 │
 ├── components/
@@ -222,7 +218,7 @@ src/
 │   ├── auth-form.tsx             # Supabase auth form
 │   ├── side-nav.tsx              # App sidebar navigation
 │   ├── top-nav.tsx               # Landing page navigation
-│   ├── ScopeCheckoutModal.tsx    # Stripe checkout modal
+│   ├── ScopeCheckoutModal.tsx    # Razorpay checkout notice
 │   └── ui/watermelon/            # Watermelon UI component primitives
 │
 └── lib/
@@ -247,7 +243,7 @@ middleware.ts                     # Auth route guard (Supabase SSR)
 - A **Supabase project** (free tier works)
 - A **Google AI API key** (Gemini)
 - A **Groq API key** (for fast inference + Whisper transcription)
-- **Stripe keys** (for billing features)
+- **Razorpay keys** (for billing features)
 
 ### 1. Clone & Install
 
@@ -273,9 +269,9 @@ GROQ_API_KEY=gsk_...
 LLM_PROVIDER_ORDER=groq,gemini        # Failover order — try Groq first, then Gemini
 GROQ_SCOPE_MODEL=llama-3.3-70b-versatile
 
-# Stripe (optional — required for billing features)
-STRIPE_SECRET_KEY=sk_test_...
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+# Razorpay (optional — required for billing features)
+RAZORPAY_KEY_ID=rzp_test_...
+RAZORPAY_KEY_SECRET=...
 
 # GitHub (optional — required for repo analysis)
 GITHUB_TOKEN=ghp_...
@@ -311,7 +307,7 @@ App starts at `http://localhost:3000`.
 | **Route Protection** | Next.js middleware validates Supabase session cookie on every protected request |
 | **Data Isolation** | PostgreSQL RLS policies enforce tenant-level row filtering — users can only query their own scopes |
 | **Credential Storage** | Supabase deployment credentials (URL + Service Key) are AES-256-GCM encrypted with a random 96-bit IV before being stored in the database |
-| **Payment Processing** | Raw card numbers are never handled server-side — Stripe tokenizes payment details client-side via Stripe.js |
+| **Payment Processing** | Raw card numbers are never handled server-side — Razorpay hosts the checkout experience |
 | **AI Output Guardrails** | The patch endpoint rejects off-topic modification requests and only accepts architecture-related changes |
 
 ---
@@ -413,8 +409,8 @@ interface GeneratedScope {
 | `GROQ_API_KEY` | ✅* | Groq API key (also used for Whisper transcription) |
 | `LLM_PROVIDER_ORDER` | Optional | Comma-separated provider order, default `groq,gemini` |
 | `GROQ_SCOPE_MODEL` | Optional | Groq model ID, default `llama-3.3-70b-versatile` |
-| `STRIPE_SECRET_KEY` | Optional | Required for payment link and subscription features |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Optional | Required for client-side Stripe Elements |
+| `RAZORPAY_KEY_ID` | Optional | Required for Razorpay payment link and onboarding features |
+| `RAZORPAY_KEY_SECRET` | Optional | Required for Razorpay payment link and onboarding features |
 | `GITHUB_TOKEN` | Optional | Fine-grained PAT for GitHub API (higher rate limits on analyzer) |
 
 *At least one LLM provider key is required.
@@ -427,7 +423,7 @@ interface GeneratedScope {
 The primary scope output renderer. Three tabs: **Architecture** (proposal, economics, diagram, sprint timeline), **Tech Stack** (interactive badges), and **Schema** (editable SQL with 1-click deploy). Includes a floating AI chat bar for live patching.
 
 ### `ScopeCard` (`src/components/scope-card.tsx`)
-Dashboard card for saved scopes. Actions: open in workspace, generate SLA payment link, export PDF, soft delete. Includes multi-phase payment status tracking with Stripe sync.
+Dashboard card for saved scopes. Actions: open in workspace, generate milestone payment link, export PDF, soft delete. Includes multi-phase payment status tracking with Razorpay sync.
 
 ### `InteractiveEstimates` (`src/components/interactive-estimates.tsx`)
 Live quoting matrix. Displays base cost + timeline with toggleable optional features. Each toggle updates the total cost and timeline in real-time before the client receives the proposal.

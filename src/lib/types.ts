@@ -61,6 +61,8 @@ export interface GeneratedScope {
   [key: string]: any;
 }
 
+export type ScopeJobStatus = "queued" | "processing" | "succeeded" | "failed";
+
 export interface Profile {
   id: string;
   full_name: string | null;

@@ -37,6 +37,35 @@ function WorkspaceContent() {
   const [activeTab, setActiveTab] = useState<"proposal" | "tech_stack" | "sql_schema">("proposal");
   const [hasAutoRun, setHasAutoRun] = useState(false);
 
+  const pollJobStatus = async (jobId: string) => {
+    const maxAttempts = 90;
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      const statusRes = await fetch(`/api/generate-scope/status?jobId=${jobId}`);
+      if (!statusRes.ok) {
+        const errData = await statusRes.json();
+        throw new Error(errData.error || "Failed to check job status");
+      }
+
+      const statusData = await statusRes.json();
+      if (statusData.status === "succeeded" && statusData.scope) {
+        setScopeResult(statusData.scope);
+        setActiveTab("proposal");
+        return;
+      }
+
+      if (statusData.status === "failed") {
+        throw new Error(statusData.error || "Scope generation failed");
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      attempts += 1;
+    }
+
+    throw new Error("Generation is taking longer than expected.");
+  };
+
   const briefWordCount = (brief.trim().match(/\S+/g) || []).length;
   const briefIsTooShort = !!brief.trim() && briefWordCount < 5;
   const briefIsTooLong = brief.length > 8000;
@@ -76,11 +105,18 @@ function WorkspaceContent() {
         body: formData,
       });
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Failed to generate scope");
-      }
       const data = await response.json();
+
+      if (!response.ok && response.status !== 202) {
+        throw new Error(data.error || "Failed to generate scope");
+      }
+
+      if (response.status === 202) {
+        if (!data.jobId) throw new Error("Job was not created");
+        await pollJobStatus(data.jobId);
+        return;
+      }
+
       setScopeResult(data.scope);
       setActiveTab("proposal");
     } catch (err: any) {

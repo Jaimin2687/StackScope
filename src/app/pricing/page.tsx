@@ -3,13 +3,11 @@
 import React, { useState } from "react";
 import { TopNav } from "@/components/top-nav";
 import { Check, Info, ArrowRight, Zap, Target, Briefcase } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { PricingCheckoutModal } from "./PricingCheckoutModal";
+import { AnimatePresence, motion } from "framer-motion";
 
 export default function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
   const [selectedPlanName, setSelectedPlanName] = useState<string | null>(null);
-  const [selectedPrice, setSelectedPrice] = useState<string | null>(null);
 
   const plans = [
     {
@@ -71,14 +69,12 @@ export default function PricingPage() {
     }
   ];
 
-  const handleSubscribe = async (planName: string, priceStr: string, cycle: "monthly" | "yearly") => {
+  const handleSubscribe = async (planName: string, priceStr: string) => {
     if (priceStr === "₹0") {
       window.location.href = "/workspace";
       return;
     }
-    
     setSelectedPlanName(planName);
-    setSelectedPrice(priceStr);
   };
 
   return (
@@ -157,7 +153,7 @@ export default function PricingPage() {
               </div>
 
               <button 
-                onClick={() => handleSubscribe(plan.name, plan.price, billingCycle)}
+                onClick={() => handleSubscribe(plan.name, plan.price)}
                 className={`w-full py-3 rounded-lg font-medium transition-all mb-8 flex items-center justify-center gap-2
                   ${plan.popular 
                     ? 'bg-white text-black hover:bg-neutral-200' 
@@ -191,21 +187,45 @@ export default function PricingPage() {
             </motion.div>
           ))}
         </div>
-      </main>
-
       <AnimatePresence>
-        {selectedPlanName && selectedPrice && billingCycle && (
-          <PricingCheckoutModal 
-            planName={selectedPlanName} 
-            price={selectedPrice}
-            cycle={billingCycle}
-            onClose={() => {
-              setSelectedPlanName(null);
-              setSelectedPrice(null);
-            }}
-          />
+        {selectedPlanName && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-lg bg-[#0a0a0a] border border-[#222] rounded-2xl shadow-2xl p-6 space-y-4"
+            >
+              <h3 className="text-lg font-semibold text-white">Request {selectedPlanName}</h3>
+              <p className="text-sm text-neutral-400">
+                Pro subscriptions are now handled via Razorpay invoices. We’ll email a secure payment link and
+                activate your plan once it clears.
+              </p>
+              <div className="flex items-center gap-3">
+                <a
+                  href="/settings"
+                  className="inline-flex h-10 items-center justify-center rounded-md bg-white px-4 text-sm font-medium text-black shadow transition-colors hover:bg-neutral-200"
+                >
+                  Update billing profile
+                </a>
+                <button
+                  onClick={() => setSelectedPlanName(null)}
+                  className="inline-flex h-10 items-center justify-center rounded-md border border-[#333] px-4 text-sm font-medium text-neutral-200 hover:bg-[#111]"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
+      </main>
+
     </div>
   );
 }

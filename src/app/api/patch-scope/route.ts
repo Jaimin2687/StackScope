@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { patchScopeWithFailover } from "@/lib/llm";
+import { getClientIp, isJsonRequest, isSameOrigin, rateLimit } from "@/lib/security";
 
 // Extend function timeout for AI inference
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
+    if (!isJsonRequest(req)) {
+      return NextResponse.json({ error: "Unsupported content type" }, { status: 415 });
+    }
+
+    if (!isSameOrigin(req)) {
+      return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+    }
+
+    const ip = getClientIp(req);
+    const limiter = rateLimit({ key: `patch-scope:${ip}`, limit: 20, windowMs: 60_000 });
+    if (!limiter.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
+
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {

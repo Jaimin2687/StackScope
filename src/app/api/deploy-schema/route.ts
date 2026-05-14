@@ -3,16 +3,35 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { decrypt } from "@/lib/encryption";
+import { getClientIp, isJsonRequest, isSameOrigin, rateLimit } from "@/lib/security";
 
 export const maxDuration = 30;
 
 
 export async function POST(req: Request) {
   try {
+    if (!isJsonRequest(req)) {
+      return NextResponse.json({ error: "Unsupported content type" }, { status: 415 });
+    }
+
+    if (!isSameOrigin(req)) {
+      return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+    }
+
+    const ip = getClientIp(req);
+    const limiter = rateLimit({ key: `deploy-schema:${ip}`, limit: 6, windowMs: 60_000 });
+    if (!limiter.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
+
     const { schema } = await req.json();
 
-    if (!schema) {
+    if (!schema || typeof schema !== "string") {
       return NextResponse.json({ error: "No schema provided" }, { status: 400 });
+    }
+
+    if (schema.length > 200_000) {
+      return NextResponse.json({ error: "Schema payload too large" }, { status: 413 });
     }
 
     // Get current user to access encrypted credentials
@@ -28,6 +47,9 @@ export async function POST(req: Request) {
     );
 
     const { data: { user } } = await serverSupabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     let targetUrl = "";
     let targetKey = "";
@@ -41,11 +63,11 @@ export async function POST(req: Request) {
       }
     }
 
-    const supabaseUrl = targetUrl || process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = targetKey || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseUrl = targetUrl;
+    const supabaseKey = targetKey;
     
     if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: "Target Supabase credentials missing." }, { status: 500 });
+      return NextResponse.json({ error: "Target Supabase credentials missing." }, { status: 400 });
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -55,9 +77,6 @@ export async function POST(req: Request) {
       .replace(/```sql/gi, "")
       .replace(/```/g, "")
       .trim();
-
-    console.log("Attempting to execute SQL schema on Supabase:");
-    console.log(cleanSchema.substring(0, 100) + "..."); // Log a snippet just to verify
 
     // To execute DDL (CREATE TABLE etc.), we need to call an RPC function 
     // because the standard Data API doesn't support raw arbitrary SQL directly.

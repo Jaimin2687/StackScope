@@ -115,10 +115,10 @@ export default function LandingPage() {
             />
             <ShowcaseCard 
               delay={0.2}
-              title="Stripe SLA & Milestones"
-              subtitle="Generate legally binding Service Level Agreements directly tied to Stripe Checkout links. Close deals faster."
+              title="Razorpay SLA & Milestones"
+              subtitle="Generate legally binding Service Level Agreements tied to Razorpay milestone payment links. Close deals faster."
               icon={<CreditCard className="w-6 h-6" />}
-              content={<AnimatedStripe />}
+              content={<AnimatedPayments />}
             />
             <ShowcaseCard 
               delay={0.4}
@@ -283,7 +283,7 @@ const AnimatedPDF = () => (
   </div>
 );
 
-const AnimatedStripe = () => (
+const AnimatedPayments = () => (
   <div className="relative w-full h-full flex items-center justify-center p-6 overflow-hidden min-h-[220px]">
      <motion.div 
         animate={{ scale: [1, 1.5, 2], opacity: [0.5, 0, 0] }}

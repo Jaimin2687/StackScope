@@ -1,125 +1,143 @@
-import { NextResponse } from 'next/server';
-import Stripe from 'stripe';
-import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
+import Razorpay from "razorpay";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || "dummy",
+  key_secret: process.env.RAZORPAY_KEY_SECRET || "dummy",
+});
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { title, summary, price, scopeId, currentScopeObj, connectedAccountId } = await req.json();
 
-    const body = await req.json();
-    const { title, summary, price, scopeId, currentScopeObj } = body;
-    
-    let basePriceValue = 1499;
-    if (price && typeof price === 'number') {
-      basePriceValue = price;
-    } else if (typeof price === 'string') {
-      const cleaned = String(price).replace(/[^0-9.-]+/g, "");
-      if (cleaned) basePriceValue = parseFloat(cleaned);
+    if (!price || isNaN(price)) {
+      return NextResponse.json({ error: "Invalid price" }, { status: 400 });
     }
 
-    const upfrontAmount = Math.round(basePriceValue * 0.25 * 100);
+    // Standardize total amount in paise (INR)
+    const amountInPaise = Math.round(Number(price) * 100);
     
-    // Migrate old scope formats to multi-phase array
+    if (!currentScopeObj || typeof currentScopeObj !== "object") {
+      return NextResponse.json({ error: "Missing scope details" }, { status: 400 });
+    }
+
+    // Use current phases or init new
     let phases = currentScopeObj?.payment_phases || [];
-    if (phases.length === 0 && currentScopeObj?.payment_link_id) {
-       phases.push({
-           phase: 1, 
-           name: "Phase 1: Project Kickoff (25%)",
-           url: currentScopeObj.payment_link_url,
-           id: currentScopeObj.payment_link_id,
-           status: currentScopeObj.payment_status || 'pending'
-       });
+    if (!Array.isArray(phases)) phases = [];
+
+    // Milestone logic based on phases length
+    const phaseNames = ["Kickoff / Deposit", "Alpha Delivery", "Beta Delivery", "Final Handover"];
+    const phaseIndex = phases.length;
+
+    if (phaseIndex >= 4) {
+      return NextResponse.json({ error: "All 4 phases have already been mapped." }, { status: 400 });
     }
 
-    const lastPhase = phases[phases.length - 1];
-    
-    // If the latest phase is still pending, just return it so they can pay it
-    if (lastPhase && lastPhase.status === 'pending') {
-        return NextResponse.json({ 
-            url: lastPhase.url, 
-            id: lastPhase.id, 
-            payment_status: lastPhase.status, 
-            phases 
-        });
+    const currentPhaseName = phaseNames[phaseIndex];
+    let milestoneAmountPaise = amountInPaise;
+
+    // Typical SaaS setup: phase split e.g., 30% / 30% / 20% / 20%
+    if (phaseIndex === 0) milestoneAmountPaise = Math.round(amountInPaise * 0.3); // 30% kickoff
+    else if (phaseIndex === 1) milestoneAmountPaise = Math.round(amountInPaise * 0.3); // 30% alpha
+    else if (phaseIndex === 2) milestoneAmountPaise = Math.round(amountInPaise * 0.2); // 20% beta
+    else milestoneAmountPaise = amountInPaise - (Math.round(amountInPaise * 0.3) * 2 + Math.round(amountInPaise * 0.2));
+
+    const milestonePlatformFeePaise = Math.round(milestoneAmountPaise * 0.08); // 8% Application Fee
+    const milestoneFreelancerPaise = milestoneAmountPaise - milestonePlatformFeePaise; // 92% to freelancer
+
+    // Create the transfer configuration specifically for Razorpay Route
+    const orderOptions: any = {
+      amount: milestoneAmountPaise,
+      currency: "INR",
+      receipt: scopeId,
+      notes: { phase: currentPhaseName },
+    };
+
+    // If freelancer account linked, setup split
+    const freelancerAcc = connectedAccountId || currentScopeObj?.freelancer_razorpay_account_id;
+    if (freelancerAcc) {
+      orderOptions.transfers = [
+        {
+          account: freelancerAcc,
+          amount: milestoneFreelancerPaise,
+          currency: "INR",
+          notes: { purpose: "Freelancer payout" },
+          on_hold: false
+        }
+      ];
     }
 
-    const nextPhaseNumber = phases.length + 1;
-    if (nextPhaseNumber > 4) {
-        return NextResponse.json({ phases, message: "All phases generated/paid" });
-    }
+    const order = await razorpay.orders.create(orderOptions);
 
-    const phaseNames = [
-        "Phase 1: Project Kickoff (25%)",
-        "Phase 2: UI/UX & Alpha Build (25%)",
-        "Phase 3: Core Logic & Beta (25%)",
-        "Phase 4: Final Delivery & Launch (25%)"
-    ];
-    
-    const nextPhaseName = phaseNames[nextPhaseNumber - 1];
-
-    if (!process.env.STRIPE_SECRET_KEY) {
-        const mockLink = { 
-            url: `https://buy.stripe.com/mock_link_phase_${nextPhaseNumber}`,
-            id: `plink_mock_${nextPhaseNumber}`,
-            payment_status: "pending"
-        };
-        return NextResponse.json({ ...mockLink, phases: [...phases, { phase: nextPhaseNumber, name: nextPhaseName, ...mockLink }] });
-    }
-
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' as any }); 
-    const safeTitle = (title || 'Architecture Build').substring(0, 200);
-
-    const product = await stripe.products.create({ 
-        name: `${nextPhaseName}: ${safeTitle}` 
-    });
-    
-    const stripePrice = await stripe.prices.create({ 
-        product: product.id, 
-        unit_amount: upfrontAmount, 
-        currency: 'inr' 
-    });
-
-    const paymentLink = await stripe.paymentLinks.create({
-        line_items: [{ price: stripePrice.id, quantity: 1 }],
-        metadata: { scopeId, phase: nextPhaseNumber }
+    // Create Payment Link assigned to this order
+    const paymentLink = await razorpay.paymentLink.create({
+      amount: milestoneAmountPaise,
+      currency: "INR",
+      accept_partial: false,
+      description: `${title} - ${currentPhaseName}`,
+      reference_id: `${scopeId}-phase-${phaseIndex + 1}`,
+      customer: {
+        name: "Client",
+        email: "client@example.com",
+        contact: "+919999999999"
+      },
+      notes: {
+        order_id: order.id,
+      },
     });
 
     const newPhase = {
-        phase: nextPhaseNumber,
-        name: nextPhaseName,
-        url: paymentLink.url,
-        id: paymentLink.id,
-        status: 'pending'
-    };
-    
-    const newPhasesArray = [...phases, newPhase];
-
-    // Save to database
-    const updatedProposal = {
-        ...currentScopeObj,
-        payment_phases: newPhasesArray,
-        // Legacy fallback 
-        payment_link_id: paymentLink.id,
-        payment_link_url: paymentLink.url,
-        payment_status: 'pending'
+      phase: phaseIndex + 1,
+      name: currentPhaseName,
+      url: paymentLink.short_url,
+      pl_id: paymentLink.id,
+      order_id: order.id,
+      amount: milestoneAmountPaise / 100, // stored in INR
+      status: "pending",
+      split: {
+        freelancer_amount: milestoneFreelancerPaise / 100,
+        platform_fee: milestonePlatformFeePaise / 100
+      }
     };
 
-    const { error } = await supabase.from("client_scopes").update({
-        generated_proposal: updatedProposal
-    }).eq("id", scopeId).eq("user_id", user.id);
+    phases.push(newPhase);
 
-    if (error) throw new Error(error.message);
+    // Update in Supabase
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll() { return cookieStore.getAll(); }, setAll() {} } }
+    );
 
-    return NextResponse.json({ 
-        url: paymentLink.url, 
-        id: paymentLink.id, 
-        payment_status: 'pending',
-        phases: newPhasesArray
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const updatedScope = {
+      ...currentScopeObj,
+      payment_phases: phases,
+      freelancer_razorpay_account_id: freelancerAcc || null
+    };
+
+    const { error: dbError } = await supabase
+      .from("client_scopes")
+      .update({ generated_proposal: updatedScope })
+      .eq("id", scopeId)
+      .eq("user_id", user.id);
+
+    if (dbError) throw dbError;
+
+    return NextResponse.json({
+      success: true,
+      url: paymentLink.short_url,
+      phases,
     });
-  } catch (err: any) {
-    console.error("Stripe Link Error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (error: any) {
+    console.error("Razorpay Generation Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

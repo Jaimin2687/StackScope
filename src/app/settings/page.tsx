@@ -30,6 +30,14 @@ export default async function SettingsPage() {
     } catch(e) {}
   }
 
+  const initialName = typeof user?.user_metadata?.full_name === "string"
+    ? user.user_metadata.full_name
+    : "";
+
+  const initialRazorpayAccountId = typeof user?.user_metadata?.razorpay_account_id === "string"
+    ? user.user_metadata.razorpay_account_id
+    : "";
+
   return (
     <div className="min-h-screen bg-black text-white flex overflow-hidden">
       <SideNav />
@@ -44,6 +52,8 @@ export default async function SettingsPage() {
             initialEmail={user?.email || ""} 
             initialUrl={initialUrl}
             initialKey={initialKey}
+            initialName={initialName}
+            initialRazorpayAccountId={initialRazorpayAccountId}
           />
         </div>
       </main>

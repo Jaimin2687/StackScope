@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import { getClientIp, isJsonRequest, isSameOrigin, rateLimit } from "@/lib/security";
 
 export const maxDuration = 30;
 
@@ -14,6 +15,20 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
 
 export async function POST(req: Request) {
   try {
+    if (!isJsonRequest(req)) {
+      return NextResponse.json({ error: "Unsupported content type" }, { status: 415 });
+    }
+
+    if (!isSameOrigin(req)) {
+      return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+    }
+
+    const ip = getClientIp(req);
+    const limiter = rateLimit({ key: `analyze-repo:${ip}`, limit: 30, windowMs: 60_000 });
+    if (!limiter.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
+
     const { repoUrl } = await req.json();
     
     // Parse GitHub URL

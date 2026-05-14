@@ -15,6 +15,16 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function getProviderStatus(err: any): number | null {
+  const status = err?.status ?? err?.response?.status ?? err?.statusCode;
+  return typeof status === "number" ? status : null;
+}
+
+function isGroqRetryable(err: any) {
+  const status = getProviderStatus(err);
+  return status === 429 || (status !== null && status >= 500);
+}
+
 function parseProviderOrder(): ProviderName[] {
   const raw = process.env.LLM_PROVIDER_ORDER || "groq,gemini";
   const parts = raw
@@ -181,8 +191,20 @@ export async function generateScopeWithFailover(
       validateScopeShape(parsed);
       return { scope: parsed, providerUsed: provider };
     } catch (e: any) {
-      errors.push({ provider, message: e?.message || String(e) });
-      // brief backoff to avoid hammering rate limits
+      const status = getProviderStatus(e);
+      if (provider === "groq" && isGroqRetryable(e)) {
+        errors.push({
+          provider,
+          message: `Groq retryable error${status ? ` (${status})` : ""}: ${e?.message || String(e)}`,
+        });
+        await sleep(400);
+        continue;
+      }
+
+      errors.push({
+        provider,
+        message: `${e?.message || String(e)}${status ? ` (status ${status})` : ""}`,
+      });
       await sleep(400);
       continue;
     }
