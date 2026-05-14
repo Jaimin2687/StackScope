@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      await enqueueScopeJob(jobRow.id);
+      await enqueueScopeJob(jobRow.id, req.nextUrl.origin);
     } catch (err: any) {
       await admin
         .from("scope_jobs")

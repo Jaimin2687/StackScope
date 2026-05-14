@@ -53,6 +53,9 @@ export async function POST(req: Request) {
                     if (status === "paid") {
                         p.status = "paid";
                         updated = true;
+                    } else if (["failed", "cancelled", "expired"].includes(status)) {
+                        p.status = "failed";
+                        updated = true;
                     }
                 } catch (err) {
                     console.error("Error looking up Razorpay payment link:", p.pl_id || p.id, err);

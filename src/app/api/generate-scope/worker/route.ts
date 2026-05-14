@@ -135,6 +135,17 @@ async function buildRepoContext(
     const rawItems = Array.isArray(treeJson.tree) ? treeJson.tree : [];
     const trimmed = trimGitTreePayload(rawItems, tierLimits);
 
+    console.log("[generate-scope] Repo tree size", {
+      owner: repoInfo.owner,
+      repo: repoInfo.repo,
+      rawItems: rawItems.length,
+      rawEstimatedTokens: trimmed.rawEstimatedTokens,
+      estimatedTokens: trimmed.estimatedTokens,
+      trimmed: trimmed.trimmed,
+      droppedCount: trimmed.droppedCount,
+      limits: tierLimits,
+    });
+
     if (trimmed.estimatedTokens > tierLimits.maxTreeTokens) {
       throw new Error("Repository tree is too large for your tier");
     }
@@ -191,9 +202,7 @@ async function buildRepoContext(
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const signature = req.headers.get("upstash-signature") || "";
-  const expectedUrl = process.env.NEXT_PUBLIC_SITE_URL
-    ? `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")}/api/generate-scope/worker`
-    : undefined;
+  const expectedUrl = req.url;
 
   try {
     verifyQstashSignature({

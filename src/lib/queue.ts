@@ -1,14 +1,23 @@
-export async function enqueueScopeJob(jobId: string) {
+function normalizeBaseUrl(url: string) {
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
+}
+
+export async function enqueueScopeJob(jobId: string, destinationOverride?: string) {
   const qstashToken = process.env.QSTASH_TOKEN;
   const baseUrl = process.env.QSTASH_BASE_URL || "https://qstash.upstash.io";
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const siteUrl = destinationOverride || process.env.NEXT_PUBLIC_SITE_URL;
   const queueSecret = process.env.SCOPE_JOB_QUEUE_SECRET;
 
   if (!qstashToken || !siteUrl || !queueSecret) {
     throw new Error("QStash configuration is missing");
   }
 
-  const destination = `${siteUrl.replace(/\/$/, "")}/api/generate-scope/worker`;
+  const normalizedSiteUrl = normalizeBaseUrl(siteUrl).replace(/\/$/, "");
+  const destination = `${normalizedSiteUrl}/api/generate-scope/worker`;
   const publishUrl = `${baseUrl.replace(/\/$/, "")}/v2/publish/${encodeURIComponent(destination)}`;
 
   const response = await fetch(publishUrl, {
