@@ -39,9 +39,9 @@ export default async function SettingsPage() {
     : "";
 
   return (
-    <div className="min-h-screen bg-black text-white flex overflow-hidden">
+    <div className="h-screen bg-black text-white flex overflow-hidden">
       <SideNav />
-      <main className="flex-1 relative z-10 overflow-y-auto custom-scrollbar p-10">
+      <main className="flex-1 min-h-0 relative z-10 overflow-y-auto custom-scrollbar p-10">
         <div className="max-w-4xl mx-auto w-full">
           <div className="mb-10 pb-6 border-b border-[#222]">
             <h1 className="text-2xl font-medium tracking-tight text-white mb-2">Settings</h1>
