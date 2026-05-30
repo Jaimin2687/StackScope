@@ -18,7 +18,7 @@ export async function enqueueScopeJob(jobId: string, destinationOverride?: strin
 
   const normalizedSiteUrl = normalizeBaseUrl(siteUrl).replace(/\/$/, "");
   const destination = `${normalizedSiteUrl}/api/generate-scope/worker`;
-  const publishUrl = `${baseUrl.replace(/\/$/, "")}/v2/publish/${encodeURIComponent(destination)}`;
+  const publishUrl = `${baseUrl.replace(/\/$/, "")}/v2/publish/${destination}`;
 
   const response = await fetch(publishUrl, {
     method: "POST",
