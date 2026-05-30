@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
   },
+  turbopack: {
+    root: process.cwd(),
+  },
   // Prevent heavy server-only packages from being bundled into client chunks
   serverExternalPackages: [
     "groq-sdk",

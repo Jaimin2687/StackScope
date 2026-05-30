@@ -10,6 +10,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { downloadScopePDF } from "@/lib/pdf-generator";
+import { LegalConsentModal } from "@/components/legal-consent-modal";
+import { useLegalConsentGate } from "@/hooks/use-legal-consent";
 
 interface Props {
   scope: any; // Database row type
@@ -31,6 +33,14 @@ export function ScopeCard({ scope, isBin }: Props) {
   const [isCopied, setIsCopied] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(content?.payment_status || null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const {
+    isModalOpen,
+    isSubmitting,
+    error: legalConsentError,
+    requireConsent,
+    confirmConsent,
+    closeModal,
+  } = useLegalConsentGate();
 
   const checkPaymentStatus = async (e?: React.MouseEvent) => {
     if (e) {
@@ -67,10 +77,7 @@ export function ScopeCard({ scope, isBin }: Props) {
     }
   };
 
-  const handleExport = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
+  const runExport = async () => {
     if (!content) return;
     setIsExporting(true);
     try {
@@ -81,6 +88,13 @@ export function ScopeCard({ scope, isBin }: Props) {
     } finally {
       setIsExporting(false);
     }
+  };
+
+  const handleExport = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    await requireConsent(runExport);
   };
 
   const handleSoftDelete = async (e: React.MouseEvent) => {
@@ -134,12 +148,7 @@ export function ScopeCard({ scope, isBin }: Props) {
   const [activePhaseIndex, setActivePhaseIndex] = useState<number>(0);
   const phases = content?.payment_phases || [];
   
-  const generateSLA = async (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
+  const runGenerateSLA = async () => {
     try {
       setIsGeneratingSLA(true);
       const res = await fetch("/api/generate-payment-link", {
@@ -170,6 +179,15 @@ export function ScopeCard({ scope, isBin }: Props) {
     } finally {
       setIsGeneratingSLA(false);
     }
+  };
+
+  const generateSLA = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    await requireConsent(runGenerateSLA);
   };
 
   const handleCopyLink = (e: React.MouseEvent, urlToCopy: string) => {
@@ -440,6 +458,14 @@ export function ScopeCard({ scope, isBin }: Props) {
           </div>
         )}
       </AnimatePresence>
+
+      <LegalConsentModal
+        open={isModalOpen}
+        onClose={closeModal}
+        onConfirm={confirmConsent}
+        isSubmitting={isSubmitting}
+        error={legalConsentError}
+      />
     </>
   );
 }

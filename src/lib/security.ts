@@ -57,3 +57,19 @@ export function isSameOrigin(req: Request) {
 		return false;
 	}
 }
+
+export function getRequestOrigin(req: Request) {
+	const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+	const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+	const host = forwardedHost || req.headers.get("host");
+
+	if (forwardedProto && host) {
+		return `${forwardedProto}://${host}`;
+	}
+
+	try {
+		return new URL(req.url).origin;
+	} catch {
+		return process.env.NEXT_PUBLIC_SITE_URL || "";
+	}
+}

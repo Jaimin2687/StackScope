@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Save, CheckCircle2, Copy } from "lucide-react";
 import { saveEncryptedConfig } from "./actions";
+import { LegalConsentModal } from "@/components/legal-consent-modal";
+import { useLegalConsentGate } from "@/hooks/use-legal-consent";
 
 interface Props {
   initialEmail: string;
@@ -31,6 +33,14 @@ export function SettingsClientView({
   const [payoutLoading, setPayoutLoading] = useState(false);
   const [payoutStatus, setPayoutStatus] = useState<"idle" | "success" | "error">("idle");
   const [payoutError, setPayoutError] = useState<string | null>(null);
+  const {
+    isModalOpen,
+    isSubmitting,
+    error: legalConsentError,
+    requireConsent,
+    confirmConsent,
+    closeModal,
+  } = useLegalConsentGate();
 
   const handleSave = async () => {
     setSaving(true);
@@ -72,35 +82,40 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`;
       setPayoutStatus("error");
       return;
     }
-    setPayoutLoading(true);
-    setPayoutStatus("idle");
-    setPayoutError(null);
 
-    try {
-      const response = await fetch("/api/razorpay/onboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: payoutName || initialEmail.split("@")[0] || "Freelancer",
-          email: initialEmail,
-          phone: payoutPhone,
-        }),
-      });
+    const runOnboarding = async () => {
+      setPayoutLoading(true);
+      setPayoutStatus("idle");
+      setPayoutError(null);
 
-      const payload = await response.json();
-      if (!response.ok) {
-        const hint = payload?.hint ? ` ${payload.hint}` : "";
-        throw new Error(`${payload?.error || "Failed to create Razorpay account."}${hint}`);
+      try {
+        const response = await fetch("/api/razorpay/onboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: payoutName || initialEmail.split("@")[0] || "Freelancer",
+            email: initialEmail,
+            phone: payoutPhone,
+          }),
+        });
+
+        const payload = await response.json();
+        if (!response.ok) {
+          const hint = payload?.hint ? ` ${payload.hint}` : "";
+          throw new Error(`${payload?.error || "Failed to create Razorpay account."}${hint}`);
+        }
+
+        setPayoutAccountId(payload.account_id || "");
+        setPayoutStatus("success");
+      } catch (error: any) {
+        setPayoutError(error?.message || "Failed to create Razorpay account.");
+        setPayoutStatus("error");
+      } finally {
+        setPayoutLoading(false);
       }
+    };
 
-      setPayoutAccountId(payload.account_id || "");
-      setPayoutStatus("success");
-    } catch (error: any) {
-      setPayoutError(error?.message || "Failed to create Razorpay account.");
-      setPayoutStatus("error");
-    } finally {
-      setPayoutLoading(false);
-    }
+    await requireConsent(runOnboarding);
   };
 
   return (
@@ -289,6 +304,14 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`}</code>
           </div>
         </div>
       </section>
+
+      <LegalConsentModal
+        open={isModalOpen}
+        onClose={closeModal}
+        onConfirm={confirmConsent}
+        isSubmitting={isSubmitting}
+        error={legalConsentError}
+      />
     </div>
   );
 }

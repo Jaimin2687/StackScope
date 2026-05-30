@@ -71,11 +71,20 @@ export async function downloadScopePDF(scope: GeneratedScope, paymentLink?: stri
     white: [255, 255, 255] as [number, number, number],
   };
 
+  const LEGAL_FOOTER =
+    "StackScope AI provides technical scoping and payment routing infrastructure. StackScope is not a party to this engagement. All services, deliverables, and refund obligations are strictly between the Client and the Developer.";
+
   const addFooter = (doc: any) => {
     const pageCount = doc.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
       
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(...COLORS.secondary);
+      const legalLines = doc.splitTextToSize(LEGAL_FOOTER, CONTENT_WIDTH);
+      doc.text(legalLines, MARGIN_X, PAGE_HEIGHT - 28, { maxWidth: CONTENT_WIDTH });
+
       // Footer Line
       doc.setDrawColor(...COLORS.light);
       doc.setLineWidth(0.5);

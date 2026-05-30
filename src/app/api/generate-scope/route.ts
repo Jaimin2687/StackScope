@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getClientIp, isSameOrigin, rateLimit } from "@/lib/security";
+import { getClientIp, getRequestOrigin, isSameOrigin, rateLimit } from "@/lib/security";
 import { getCurrentUsagePeriod, getOrCreateBillingSnapshot } from "@/lib/billing";
 import { enqueueScopeJob } from "@/lib/queue";
 
@@ -122,7 +122,8 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      await enqueueScopeJob(jobRow.id, req.nextUrl.origin);
+      const origin = getRequestOrigin(req);
+      await enqueueScopeJob(jobRow.id, origin);
     } catch (err: any) {
       await admin
         .from("scope_jobs")

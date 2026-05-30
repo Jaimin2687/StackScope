@@ -2,6 +2,7 @@
 
 import { AuthForm } from "@/components/auth-form";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 export default function LoginPage() {
   return (
@@ -22,8 +23,8 @@ export default function LoginPage() {
         
         <div className="mt-12 flex justify-center gap-6 text-[13px] text-neutral-600">
           <a href="#" className="hover:text-neutral-300 transition-colors">Documentation</a>
-          <a href="#" className="hover:text-neutral-300 transition-colors">Privacy</a>
-          <a href="#" className="hover:text-neutral-300 transition-colors">Terms</a>
+          <Link href="/privacy-policy" className="hover:text-neutral-300 transition-colors">Privacy</Link>
+          <Link href="/terms-of-service" className="hover:text-neutral-300 transition-colors">Terms</Link>
         </div>
       </motion.div>
     </main>

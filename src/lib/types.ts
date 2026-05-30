@@ -120,6 +120,20 @@ export interface ClientScope {
   deleted_at?: string;
 }
 
+export interface UserLegalConsent {
+  id: string;
+  user_id: string;
+  consent_version: string;
+  ip_address: string | null;
+  accepted_at: string;
+}
+
+export interface LegalConsentResponse {
+  success: boolean;
+  consent?: UserLegalConsent;
+  error?: string;
+}
+
 export const SUPPORTED_LANGUAGES = [
   { value: "en", label: "English" },
   { value: "es", label: "Spanish" },

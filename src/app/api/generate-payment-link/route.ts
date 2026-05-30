@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { hasUserLegalConsent } from "@/lib/legal-consent-server";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || "dummy",
@@ -14,6 +15,23 @@ export async function POST(req: Request) {
 
     if (!price || isNaN(price)) {
       return NextResponse.json({ error: "Invalid price" }, { status: 400 });
+    }
+
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll() { return cookieStore.getAll(); }, setAll() {} } }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const hasConsent = await hasUserLegalConsent(supabase, user.id);
+    if (!hasConsent) {
+      return NextResponse.json({ error: "Legal consent required" }, { status: 403 });
     }
 
     // Standardize total amount in paise (INR)
@@ -103,19 +121,6 @@ export async function POST(req: Request) {
     };
 
     phases.push(newPhase);
-
-    // Update in Supabase
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll() { return cookieStore.getAll(); }, setAll() {} } }
-    );
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     const updatedScope = {
       ...currentScopeObj,

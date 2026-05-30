@@ -9,6 +9,8 @@ import dynamic from "next/dynamic";
 import { InteractiveEstimates } from "./interactive-estimates";
 import Link from "next/link";
 import { checkConfigurationStatus, saveEncryptedConfig } from "@/app/settings/actions";
+import { LegalConsentModal } from "./legal-consent-modal";
+import { useLegalConsentGate } from "@/hooks/use-legal-consent";
 
 // Heavy component - Code-split aggressively so initial renders aren't blocked by 1.5MB payload
 const MermaidDiagram = dynamic(() => import("./mermaid-diagram").then(mod => mod.MermaidDiagram), {
@@ -41,6 +43,14 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
   const [chatMessage, setChatMessage] = useState("");
   const [isPatching, setIsPatching] = useState(false);
   const [patchError, setPatchError] = useState<string | null>(null);
+  const {
+    isModalOpen,
+    isSubmitting,
+    error: legalConsentError,
+    requireConsent,
+    confirmConsent,
+    closeModal,
+  } = useLegalConsentGate();
 
   const handleChatPatch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,16 +178,20 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
   
   const [isExporting, setIsExporting] = useState(false);
 
-  const handleExport = async () => {
+  const runExport = async () => {
     setIsExporting(true);
     try {
-      downloadScopePDF(editedScope);
+      await downloadScopePDF(editedScope);
     } catch (err) {
       console.error(err);
-      downloadScopePDF(editedScope); // fallback
+      await downloadScopePDF(editedScope); // fallback
     } finally {
       setIsExporting(false);
     }
+  };
+
+  const handleExport = async () => {
+    await requireConsent(runExport);
   };
 
   const renderActionBar = () => (
@@ -206,6 +220,16 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
     hidden: { opacity: 0, y: 5 },
     show: { opacity: 1, y: 0 }
   };
+
+  const consentModal = (
+    <LegalConsentModal
+      open={isModalOpen}
+      onClose={closeModal}
+      onConfirm={confirmConsent}
+      isSubmitting={isSubmitting}
+      error={legalConsentError}
+    />
+  );
 
   if (activeTab === "proposal") {
     const s = editedScope as any;
@@ -543,6 +567,7 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
             </form>
           </motion.div>
         </div>
+        {consentModal}
       </>
     );
   }
@@ -643,6 +668,7 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
             </form>
           </motion.div>
         </div>
+        {consentModal}
       </>
     );
   }
@@ -869,6 +895,7 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`}
             </form>
           </motion.div>
         </div>
+        {consentModal}
       </>
     );
   }
