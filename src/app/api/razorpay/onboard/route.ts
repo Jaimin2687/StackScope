@@ -1,52 +1,60 @@
 import { NextResponse } from "next/server";
-import Razorpay from "razorpay";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { getRazorpay } from "@/lib/razorpay";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getClientIp, rateLimit } from "@/lib/security";
 
 export async function POST(req: Request) {
   try {
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
-    if (!keyId || !keySecret) {
-      return NextResponse.json(
-        { error: "Razorpay keys are not configured in the environment." },
-        { status: 500 }
-      );
+    // ── Rate limiting ──────────────────────────────────────────
+    const ip = getClientIp(req);
+    const limiter = rateLimit({ key: `onboard-freelancer:${ip}`, limit: 5, windowMs: 60_000 });
+    if (!limiter.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
 
-    const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll() { return cookieStore.getAll(); }, setAll() {} } }
-    );
-
+    // ── Auth guard ─────────────────────────────────────────────
+    const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { name, email, phone } = await req.json();
-    if (!name || !email || !phone) {
-      return NextResponse.json({ error: "Name, email, and phone are required." }, { status: 400 });
+    // ── Input validation ───────────────────────────────────────
+    const body = await req.json();
+    const { name, email, phone } = body as Record<string, unknown>;
+
+    if (
+      typeof name !== "string" || !name.trim() ||
+      typeof email !== "string" || !email.includes("@") ||
+      typeof phone !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "name, email, and phone are required." },
+        { status: 400 }
+      );
     }
 
-    const normalizedPhone = String(phone).replace(/\s+/g, "");
+    const normalizedPhone = phone.replace(/\s+/g, "");
     if (!/^[0-9]{8,15}$/.test(normalizedPhone)) {
-      return NextResponse.json({ error: "Phone must be 8-15 digits." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Phone must be 8–15 digits with no spaces." },
+        { status: 400 }
+      );
     }
-    
-    // Create a linked account for the freelancer (Razorpay Route)
-    const options: any = {
+
+    // ── Razorpay: create linked account (Route) ────────────────
+    const razorpay = getRazorpay();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const accountOptions: any = {
       email,
       phone: normalizedPhone,
-      type: "standard",
+      type: "route",
       business_type: "individual",
-      legal_business_name: `${name} Freelance`,
-      customer_facing_business_name: name,
-      contact_name: name,
+      legal_business_name: `${name.trim()} Freelance`,
+      customer_facing_business_name: name.trim(),
+      contact_name: name.trim(),
       reference_id: user.id,
       profile: {
         category: "services",
@@ -54,39 +62,59 @@ export async function POST(req: Request) {
         business_model: "Freelance software development services",
       },
     };
-    
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let account: any;
     try {
-      account = await razorpay.accounts.create(options);
-    } catch (err: any) {
-      const statusCode = err?.statusCode || err?.status || 500;
+      account = await razorpay.accounts.create(accountOptions);
+    } catch (err: unknown) {
+      const e = err as Record<string, unknown>;
+      const statusCode = (e?.statusCode as number) || (e?.status as number) || 500;
       const description =
-        err?.error?.description || err?.error?.message || err?.message || "Razorpay onboarding failed.";
-      const code = err?.error?.code || err?.error?.reason || err?.code;
+        ((e?.error as Record<string, unknown>)?.description as string) ||
+        ((e?.error as Record<string, unknown>)?.message as string) ||
+        (e?.message as string) ||
+        "Razorpay onboarding failed.";
+      const code =
+        ((e?.error as Record<string, unknown>)?.code as string) ||
+        ((e?.error as Record<string, unknown>)?.reason as string) ||
+        (e?.code as string);
       const hint =
-        typeof description === "string" && description.toLowerCase().includes("access denied")
-          ? "Route/Partner account access is required for linked accounts. Enable Route in Razorpay or use a Route-enabled key."
+        typeof description === "string" &&
+        description.toLowerCase().includes("access denied")
+          ? "Route/Partner account access is required for linked accounts. Enable Razorpay Route in your dashboard or contact Razorpay support."
           : undefined;
 
-      return NextResponse.json(
-        {
-          error: description,
-          code,
-          hint,
-        },
-        { status: statusCode }
-      );
+      return NextResponse.json({ error: description, code, hint }, { status: statusCode });
     }
 
-    await supabase.auth.updateUser({
-      data: { razorpay_account_id: account.id }
-    });
+    const accountId = account.id as string;
 
-    return NextResponse.json({ success: true, account_id: account.id });
-  } catch (error: any) {
-    console.error("Razorpay Onboarding Error:", error);
+    // ── Persist to Supabase (admin client — bypasses RLS) ──────
+    const admin = createAdminClient();
+
+    // Upsert so the row definitely exists, then set the account ID
+    const { error: dbError } = await admin
+      .from("user_billing")
+      .upsert(
+        { user_id: user.id, razorpay_account_id: accountId },
+        { onConflict: "user_id" }
+      );
+
+    if (dbError) {
+      console.error("[onboard-freelancer] db upsert error:", dbError);
+      // Non-fatal — account was created in Razorpay; log and continue
+    }
+
+    // Also mirror to auth user metadata for quick access
+    await supabase.auth.updateUser({ data: { razorpay_account_id: accountId } });
+
+    return NextResponse.json({ success: true, account_id: accountId });
+  } catch (error: unknown) {
+    const e = error as Error;
+    console.error("[onboard-freelancer] error:", e);
     return NextResponse.json(
-      { error: error.message || "Razorpay onboarding failed." },
+      { error: e.message || "Razorpay onboarding failed." },
       { status: 500 }
     );
   }
