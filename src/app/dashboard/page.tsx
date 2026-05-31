@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import type { ClientScope } from "@/lib/types";
 import { Search, FolderSync, Trash2, LayoutGrid } from "lucide-react";
 import Link from "next/link";
+import { getOrCreateBillingSnapshot } from "@/lib/billing";
 
 interface Props {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -21,6 +22,19 @@ export default async function DashboardPage({ searchParams }: Props) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { cookies: { getAll() { return cookieStore.getAll(); } } }
   );
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Resolve billing tier — demo users automatically get "pro" here
+  let isPro = false;
+  if (user) {
+    try {
+      const billing = await getOrCreateBillingSnapshot(supabase, user.id);
+      isPro = billing.tier === "pro";
+    } catch {
+      // Non-fatal — default to showing the upgrade button
+    }
+  }
 
   const { data: scopes, error } = await supabase
     .from("client_scopes")
@@ -96,9 +110,11 @@ export default async function DashboardPage({ searchParams }: Props) {
             </div>
 
             <div className="flex items-center gap-3 w-full md:w-auto">
-              <a href="/pricing" className="hidden md:flex items-center gap-2 px-4 h-9 bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 text-emerald-400 text-sm font-medium rounded-md hover:bg-emerald-500/20 transition-colors">
-                Upgrade to Pro
-              </a>
+              {!isPro && (
+                <a href="/pricing" className="hidden md:flex items-center gap-2 px-4 h-9 bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 text-emerald-400 text-sm font-medium rounded-md hover:bg-emerald-500/20 transition-colors">
+                  Upgrade to Pro
+                </a>
+              )}
               <div className="relative group w-full md:w-72">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Search className="h-4 w-4 text-neutral-500" />
