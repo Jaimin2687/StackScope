@@ -33,6 +33,7 @@ export function SettingsClientView({
   const [payoutLoading, setPayoutLoading] = useState(false);
   const [payoutStatus, setPayoutStatus] = useState<"idle" | "success" | "error">("idle");
   const [payoutError, setPayoutError] = useState<string | null>(null);
+  const [payoutHint, setPayoutHint] = useState<string | null>(null);
   const {
     isModalOpen,
     isSubmitting,
@@ -87,6 +88,7 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`;
       setPayoutLoading(true);
       setPayoutStatus("idle");
       setPayoutError(null);
+      setPayoutHint(null);
 
       try {
         const response = await fetch("/api/razorpay/onboard", {
@@ -101,8 +103,8 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`;
 
         const payload = await response.json();
         if (!response.ok) {
-          const hint = payload?.hint ? ` ${payload.hint}` : "";
-          throw new Error(`${payload?.error || "Failed to create Razorpay account."}${hint}`);
+          if (payload?.hint) setPayoutHint(payload.hint);
+          throw new Error(payload?.error || "Failed to create Razorpay account.");
         }
 
         setPayoutAccountId(payload.account_id || "");
@@ -290,7 +292,12 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`}</code>
             )}
 
             {payoutStatus === "error" && payoutError && (
-              <p className="text-xs text-red-400">{payoutError}</p>
+              <div className="space-y-1">
+                <p className="text-xs text-red-400">{payoutError}</p>
+                {payoutHint && (
+                  <p className="text-xs text-amber-400 leading-relaxed">💡 {payoutHint}</p>
+                )}
+              </div>
             )}
           </div>
 

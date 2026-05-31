@@ -79,9 +79,12 @@ export async function POST(req: Request) {
         ((e?.error as Record<string, unknown>)?.code as string) ||
         ((e?.error as Record<string, unknown>)?.reason as string) ||
         (e?.code as string);
+      const descLower = typeof description === "string" ? description.toLowerCase() : "";
       const hint =
-        typeof description === "string" &&
-        description.toLowerCase().includes("access denied")
+        descLower.includes("route feature not enabled") ||
+        descLower.includes("route") && descLower.includes("not enabled")
+          ? "Razorpay Route is not enabled on your account. Go to dashboard.razorpay.com → Route, or contact Razorpay support to activate the Route/Marketplace feature."
+          : descLower.includes("access denied")
           ? "Route/Partner account access is required for linked accounts. Enable Razorpay Route in your dashboard or contact Razorpay support."
           : undefined;
 

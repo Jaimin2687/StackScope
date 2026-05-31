@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isDemoUser, getDemoBillingSnapshot } from "./demo-user";
 
 export type UserTier = "free" | "pro";
 
@@ -72,6 +73,13 @@ export async function getOrCreateBillingSnapshot(
   supabase: SupabaseClient,
   userId: string
 ): Promise<BillingSnapshot> {
+  // ── Demo / test-user fast path ─────────────────────────────────────────────
+  // If DEMO_USER_EMAIL is set and this user matches, grant full Pro + unlimited
+  // quota without any DB interaction.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (isDemoUser(user?.email)) {
+    return getDemoBillingSnapshot();
+  }
   const { data, error } = await supabase
     .from("user_billing")
     .select("razorpay_subscription_status, monthly_quota")
