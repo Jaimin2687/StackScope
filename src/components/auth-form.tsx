@@ -60,11 +60,11 @@ export function AuthForm() {
         throw new Error(payload?.error || "Demo login failed.");
       }
 
-      // Exchange the OTP token for a real Supabase session — no password needed
+      // Exchange the hashed token for a real Supabase session.
+      // Must use token_hash (not email+token) — that's only for 6-digit OTPs.
       const supabase = createClient();
       const { error } = await supabase.auth.verifyOtp({
-        email: payload.email,
-        token: payload.token,
+        token_hash: payload.token_hash,
         type: "magiclink",
       });
 

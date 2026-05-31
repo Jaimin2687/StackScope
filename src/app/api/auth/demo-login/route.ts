@@ -52,11 +52,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // Return the hashed_token and email so the client can call
-    // supabase.auth.verifyOtp({ email, token, type: 'magiclink' })
+    // Return the hashed_token so the client can call:
+    // supabase.auth.verifyOtp({ token_hash, type: 'magiclink' })
+    // NOTE: token_hash must be passed WITHOUT email — using email+token
+    // is for 6-digit OTPs only; hashed_token requires the token_hash param.
     return NextResponse.json({
-      email: demoEmail,
-      token: data.properties.hashed_token,
+      token_hash: data.properties.hashed_token,
     });
   } catch (err: unknown) {
     const e = err as Error;
