@@ -6,15 +6,26 @@ import { createClient } from "@/lib/supabase/client";
 import { CopyPlus, LayoutDashboard, Settings, LogOut, TerminalSquare, FileCode } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/watermelon";
+import { useState } from "react";
 
 export function SideNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = createClient();
+  const [signingOut, setSigningOut] = useState(false);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      // refresh() clears the server-side session cache, then replace() redirects
+      router.refresh();
+      router.replace("/login");
+    } catch (err) {
+      console.error("Sign out failed:", err);
+      setSigningOut(false);
+    }
   };
 
   const navItems = [
@@ -95,10 +106,11 @@ export function SideNav() {
             variant="ghost"
             size="sm"
             onClick={handleSignOut}
-            className="w-full justify-start gap-3 rounded-md"
+            disabled={signingOut}
+            className="w-full justify-start gap-3 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <LogOut className="w-4 h-4" />
-            Sign Out
+            <LogOut className={`w-4 h-4 ${signingOut ? "animate-spin" : ""}`} />
+            {signingOut ? "Signing out…" : "Sign Out"}
           </Button>
         </div>
       </div>
