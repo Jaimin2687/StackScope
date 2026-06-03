@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, CheckCircle2 } from "lucide-react";
+import { Zap, CheckCircle2, Mail } from "lucide-react";
 
 export function AuthForm() {
   const [isLogin, setIsLogin] = useState(true);
@@ -36,28 +36,20 @@ export function AuthForm() {
         router.refresh();
         router.replace("/dashboard");
       } else {
-        // ── Sign Up (server-side, auto-confirms email) ────────────────────
-        const res = await fetch("/api/auth/signup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
+        // ── Sign Up — email confirmation required ─────────────────────────
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/dashboard`,
+          },
         });
+        if (error) throw error;
 
-        const payload = await res.json();
-
-        if (!res.ok) {
-          throw new Error(payload?.error || "Failed to create account.");
-        }
-
-        if (payload.requiresLogin) {
-          // Account created but auto sign-in failed — show success and switch to login
-          setSuccess(payload.message || "Account created! Please sign in.");
-          setIsLogin(true);
-        } else {
-          // Fully signed in — go to dashboard
-          router.refresh();
-          router.replace("/dashboard");
-        }
+        // Show a clear SUCCESS message (green), switch to sign-in view
+        setSuccess("We've sent a confirmation link to your inbox. Click it to activate your account, then sign in here.");
+        setIsLogin(true);
+        setPassword(""); // clear password field for sign-in
       }
     } catch (err: any) {
       setError(err.message || "An error occurred. Please try again.");
@@ -116,106 +108,136 @@ export function AuthForm() {
         </p>
       </div>
 
-      <form onSubmit={handleAuth} className="space-y-4 relative z-10">
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-neutral-400">Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@example.com"
-            required
-            disabled={isDisabled}
-            className="flex h-10 w-full rounded-md border border-[#333] bg-[#000] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-[#555] transition-colors disabled:opacity-50"
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-neutral-400">Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            required
-            disabled={isDisabled}
-            minLength={6}
-            className="flex h-10 w-full rounded-md border border-[#333] bg-[#000] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-[#555] transition-colors disabled:opacity-50"
-          />
-        </div>
-
-        {/* Error message */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="text-[13px] text-red-400 text-center py-1"
+      {/* ── Check-your-email success screen ── */}
+      <AnimatePresence mode="wait">
+        {success ? (
+          <motion.div
+            key="success"
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            transition={{ duration: 0.25 }}
+            className="relative z-10 flex flex-col items-center text-center gap-4 py-4"
+          >
+            <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+              <Mail className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-white font-medium mb-1">Check your inbox</p>
+              <p className="text-[13px] text-neutral-400 leading-relaxed">{success}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { clearMessages(); setIsLogin(true); }}
+              className="mt-2 w-full h-10 bg-white text-black text-sm font-medium rounded-md hover:bg-neutral-200 transition-colors"
             >
-              {error}
-            </motion.div>
-          )}
-        </AnimatePresence>
+              Back to Sign In
+            </button>
+            <p className="text-[12px] text-neutral-600">
+              Didn&apos;t get the email?{" "}
+              <button
+                type="button"
+                onClick={() => { clearMessages(); setIsLogin(false); }}
+                className="text-neutral-400 hover:text-white underline transition-colors"
+              >
+                Try again
+              </button>
+            </p>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="form"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <form onSubmit={handleAuth} className="space-y-4 relative z-10">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-neutral-400">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  required
+                  disabled={isDisabled}
+                  className="flex h-10 w-full rounded-md border border-[#333] bg-[#000] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-[#555] transition-colors disabled:opacity-50"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-neutral-400">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  disabled={isDisabled}
+                  minLength={6}
+                  className="flex h-10 w-full rounded-md border border-[#333] bg-[#000] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-[#555] transition-colors disabled:opacity-50"
+                />
+              </div>
 
-        {/* Success message */}
-        <AnimatePresence>
-          {success && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="flex items-center justify-center gap-1.5 text-[13px] text-emerald-400 text-center py-1"
+              {/* Error */}
+              <AnimatePresence>
+                {error && (
+                  <motion.p
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="text-[13px] text-red-400 text-center py-1"
+                  >
+                    {error}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                type="submit"
+                disabled={isDisabled}
+                className="w-full h-10 bg-white text-black text-sm font-medium rounded-md hover:bg-neutral-200 transition-colors mt-2 disabled:opacity-50"
+              >
+                {loading
+                  ? "Please wait..."
+                  : isLogin ? "Sign In" : "Create Account"}
+              </motion.button>
+            </form>
+
+            {/* Demo login */}
+            <div className="relative z-10 flex items-center gap-3 my-5">
+              <div className="flex-1 h-px bg-[#222]" />
+              <span className="text-[11px] text-neutral-600 uppercase tracking-wider">or</span>
+              <div className="flex-1 h-px bg-[#222]" />
+            </div>
+
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              type="button"
+              onClick={handleDemoLogin}
+              disabled={isDisabled}
+              className="relative z-10 w-full h-10 flex items-center justify-center gap-2 rounded-md border border-[#333] bg-[#111] text-sm font-medium text-neutral-300 hover:border-[#555] hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
-              {success}
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <Zap className={`w-4 h-4 text-amber-400 ${demoLoading ? "animate-pulse" : ""}`} />
+              {demoLoading ? "Starting demo..." : "Try Demo — instant access"}
+            </motion.button>
 
-        <motion.button
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.98 }}
-          type="submit"
-          disabled={isDisabled}
-          className="w-full h-10 bg-white text-black text-sm font-medium rounded-md hover:bg-neutral-200 transition-colors mt-2 disabled:opacity-50"
-        >
-          {loading
-            ? "Please wait..."
-            : isLogin
-            ? "Sign In"
-            : "Create Account"}
-        </motion.button>
-      </form>
-
-      {/* Demo login */}
-      <div className="relative z-10 flex items-center gap-3 my-5">
-        <div className="flex-1 h-px bg-[#222]" />
-        <span className="text-[11px] text-neutral-600 uppercase tracking-wider">or</span>
-        <div className="flex-1 h-px bg-[#222]" />
-      </div>
-
-      <motion.button
-        whileHover={{ scale: 1.01 }}
-        whileTap={{ scale: 0.98 }}
-        type="button"
-        onClick={handleDemoLogin}
-        disabled={isDisabled}
-        className="relative z-10 w-full h-10 flex items-center justify-center gap-2 rounded-md border border-[#333] bg-[#111] text-sm font-medium text-neutral-300 hover:border-[#555] hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <Zap className={`w-4 h-4 text-amber-400 ${demoLoading ? "animate-pulse" : ""}`} />
-        {demoLoading ? "Starting demo..." : "Try Demo — instant access"}
-      </motion.button>
-
-      <div className="mt-6 text-center text-[13px] text-neutral-500 relative z-10">
-        {isLogin ? "Don't have an account? " : "Already have an account? "}
-        <button
-          type="button"
-          onClick={() => { setIsLogin(!isLogin); clearMessages(); }}
-          className="text-white hover:underline transition-colors"
-        >
-          {isLogin ? "Sign up" : "Sign in"}
-        </button>
-      </div>
+            <div className="mt-6 text-center text-[13px] text-neutral-500 relative z-10">
+              {isLogin ? "Don't have an account? " : "Already have an account? "}
+              <button
+                type="button"
+                onClick={() => { setIsLogin(!isLogin); clearMessages(); }}
+                className="text-white hover:underline transition-colors"
+              >
+                {isLogin ? "Sign up" : "Sign in"}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
