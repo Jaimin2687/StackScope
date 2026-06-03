@@ -4,43 +4,63 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap } from "lucide-react";
+import { Zap, CheckCircle2 } from "lucide-react";
 
 export function AuthForm() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
   const router = useRouter();
 
+  const clearMessages = () => {
+    setError(null);
+    setSuccess(null);
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
+    clearMessages();
 
     try {
       const supabase = createClient();
+
       if (isLogin) {
+        // ── Sign In ───────────────────────────────────────────────────────
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         router.refresh();
         router.replace("/dashboard");
       } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/dashboard`,
-          },
+        // ── Sign Up (server-side, auto-confirms email) ────────────────────
+        const res = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
         });
-        if (error) throw error;
-        setError("Check your email for the confirmation link.");
-        setIsLogin(true);
+
+        const payload = await res.json();
+
+        if (!res.ok) {
+          throw new Error(payload?.error || "Failed to create account.");
+        }
+
+        if (payload.requiresLogin) {
+          // Account created but auto sign-in failed — show success and switch to login
+          setSuccess(payload.message || "Account created! Please sign in.");
+          setIsLogin(true);
+        } else {
+          // Fully signed in — go to dashboard
+          router.refresh();
+          router.replace("/dashboard");
+        }
       }
     } catch (err: any) {
-      setError(err.message || "An error occurred");
+      setError(err.message || "An error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -49,10 +69,9 @@ export function AuthForm() {
   const handleDemoLogin = async () => {
     if (demoLoading) return;
     setDemoLoading(true);
-    setError(null);
+    clearMessages();
 
     try {
-      // Ask server to generate a one-time magic-link token for the demo account
       const res = await fetch("/api/auth/demo-login", { method: "POST" });
       const payload = await res.json();
 
@@ -60,8 +79,6 @@ export function AuthForm() {
         throw new Error(payload?.error || "Demo login failed.");
       }
 
-      // Exchange the hashed token for a real Supabase session.
-      // Must use token_hash (not email+token) — that's only for 6-digit OTPs.
       const supabase = createClient();
       const { error } = await supabase.auth.verifyOtp({
         token_hash: payload.token_hash,
@@ -84,7 +101,7 @@ export function AuthForm() {
   return (
     <div className="w-full max-w-[360px] mx-auto p-8 rounded-xl border border-[#222] bg-[#0a0a0a] shadow-2xl relative overflow-hidden">
 
-      {/* Super subtle background glow */}
+      {/* Subtle background glow */}
       <div className="absolute -top-32 -left-32 w-64 h-64 bg-white/5 rounded-full blur-[80px]" />
 
       <div className="relative z-10 flex flex-col items-center text-center mb-8">
@@ -113,9 +130,7 @@ export function AuthForm() {
           />
         </div>
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-neutral-400">Password</label>
-          </div>
+          <label className="text-xs font-medium text-neutral-400">Password</label>
           <input
             type="password"
             value={password}
@@ -123,10 +138,12 @@ export function AuthForm() {
             placeholder="••••••••"
             required
             disabled={isDisabled}
+            minLength={6}
             className="flex h-10 w-full rounded-md border border-[#333] bg-[#000] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-[#555] transition-colors disabled:opacity-50"
           />
         </div>
 
+        {/* Error message */}
         <AnimatePresence>
           {error && (
             <motion.div
@@ -140,6 +157,21 @@ export function AuthForm() {
           )}
         </AnimatePresence>
 
+        {/* Success message */}
+        <AnimatePresence>
+          {success && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="flex items-center justify-center gap-1.5 text-[13px] text-emerald-400 text-center py-1"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+              {success}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <motion.button
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.98 }}
@@ -147,11 +179,15 @@ export function AuthForm() {
           disabled={isDisabled}
           className="w-full h-10 bg-white text-black text-sm font-medium rounded-md hover:bg-neutral-200 transition-colors mt-2 disabled:opacity-50"
         >
-          {loading ? "Please wait..." : isLogin ? "Sign In" : "Sign Up"}
+          {loading
+            ? "Please wait..."
+            : isLogin
+            ? "Sign In"
+            : "Create Account"}
         </motion.button>
       </form>
 
-      {/* ── Demo login separator ───────────────────────────────────────── */}
+      {/* Demo login */}
       <div className="relative z-10 flex items-center gap-3 my-5">
         <div className="flex-1 h-px bg-[#222]" />
         <span className="text-[11px] text-neutral-600 uppercase tracking-wider">or</span>
@@ -174,7 +210,7 @@ export function AuthForm() {
         {isLogin ? "Don't have an account? " : "Already have an account? "}
         <button
           type="button"
-          onClick={() => { setIsLogin(!isLogin); setError(null); }}
+          onClick={() => { setIsLogin(!isLogin); clearMessages(); }}
           className="text-white hover:underline transition-colors"
         >
           {isLogin ? "Sign up" : "Sign in"}
