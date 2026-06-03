@@ -12,6 +12,7 @@ import { useState } from "react";
 import { downloadScopePDF } from "@/lib/pdf-generator";
 import { LegalConsentModal } from "@/components/legal-consent-modal";
 import { useLegalConsentGate } from "@/hooks/use-legal-consent";
+import { isRoutingEnabled } from "@/lib/feature-flags";
 
 interface Props {
   scope: any; // Database row type
@@ -21,6 +22,7 @@ interface Props {
 export function ScopeCard({ scope, isBin }: Props) {
   const router = useRouter();
   const [isProcessing, setIsProcessing] = useState(false);
+  const routingEnabled = isRoutingEnabled();
   
   const content = scope.generated_proposal as GeneratedScope | undefined;
   
@@ -231,14 +233,16 @@ export function ScopeCard({ scope, isBin }: Props) {
                 <ArrowRight className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors" />
               </div>
               <div className="flex gap-1 mt-1 z-10 flex-col sm:flex-row flex-wrap justify-end">
-                <button 
-                  disabled={isGeneratingSLA}
-                  onClick={generateSLA}
-                  className={`p-1.5 hover:bg-[#222] rounded-md transition-colors ${isGeneratingSLA ? 'text-emerald-400/50 cursor-not-allowed' : 'text-neutral-500 hover:text-emerald-400'} flex-shrink-0`}
-                  title="Generate SLA & Razorpay Payment Links"
-                >
-                  {isGeneratingSLA ? <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" /> : <CreditCard className="w-4 h-4" />}
-                </button>
+                {routingEnabled && (
+                  <button 
+                    disabled={isGeneratingSLA}
+                    onClick={generateSLA}
+                    className={`p-1.5 hover:bg-[#222] rounded-md transition-colors ${isGeneratingSLA ? 'text-emerald-400/50 cursor-not-allowed' : 'text-neutral-500 hover:text-emerald-400'} flex-shrink-0`}
+                    title="Generate SLA & Razorpay Payment Links"
+                  >
+                    {isGeneratingSLA ? <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" /> : <CreditCard className="w-4 h-4" />}
+                  </button>
+                )}
                 <button 
                   onClick={handleExport}
                   disabled={isExporting}
@@ -309,8 +313,9 @@ export function ScopeCard({ scope, isBin }: Props) {
         </Link>
       )}
 
-      {/* SLA Popup Modal */}
-      <AnimatePresence>
+      {/* SLA Popup Modal — only rendered when routing is enabled */}
+      {routingEnabled && (
+        <AnimatePresence>
         {slaUrl && (
           <div 
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
@@ -458,6 +463,7 @@ export function ScopeCard({ scope, isBin }: Props) {
           </div>
         )}
       </AnimatePresence>
+      )}
 
       <LegalConsentModal
         open={isModalOpen}

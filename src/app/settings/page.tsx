@@ -3,6 +3,7 @@ import { SettingsClientView } from "./settings-client";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { decrypt } from "@/lib/encryption";
+import { isRoutingEnabled } from "@/lib/feature-flags";
 
 export default async function SettingsPage() {
   const cookieStore = await cookies();
@@ -54,6 +55,7 @@ export default async function SettingsPage() {
             initialKey={initialKey}
             initialName={initialName}
             initialRazorpayAccountId={initialRazorpayAccountId}
+            routingEnabled={isRoutingEnabled()}
           />
         </div>
       </main>

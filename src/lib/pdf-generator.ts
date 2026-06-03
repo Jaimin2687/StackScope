@@ -1,4 +1,5 @@
 import type { GeneratedScope } from "./types";
+import { isRoutingEnabled } from "./feature-flags";
 
 export async function downloadScopePDF(scope: GeneratedScope, paymentLink?: string) {
   // Dynamically import jsPDF to avoid massive 400KB+ client bundle bloat on initial page loads
@@ -241,7 +242,10 @@ export async function downloadScopePDF(scope: GeneratedScope, paymentLink?: stri
   doc.text(`${teamSize} Members`, col2, currentY + 18);
   doc.text(`${cost}`, col3, currentY + 18);
 
-  if (paymentLink) {
+  // Only embed the payment section when routing is enabled
+  const effectivePaymentLink = isRoutingEnabled() ? paymentLink : undefined;
+
+  if (effectivePaymentLink) {
     currentY += 36;
     checkPageBreak(30);
     doc.setFont("helvetica", "bold");
@@ -271,13 +275,13 @@ export async function downloadScopePDF(scope: GeneratedScope, paymentLink?: stri
     doc.text("CLICK HERE TO PROCEED TO PAYMENT", MARGIN_X + 55, currentY + 9.5, { align: "center" });
     
     // Add clickable link over the button
-    doc.link(MARGIN_X, currentY, 110, 14, { url: paymentLink });
+    doc.link(MARGIN_X, currentY, 110, 14, { url: effectivePaymentLink });
     
     currentY += 22;
     doc.setFont("helvetica", "italic");
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 250);
-    doc.textWithLink(paymentLink, MARGIN_X, currentY, { url: paymentLink });
+    doc.textWithLink(effectivePaymentLink, MARGIN_X, currentY, { url: effectivePaymentLink });
 
     currentY += 15;
   } else {

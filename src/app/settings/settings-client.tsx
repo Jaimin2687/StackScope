@@ -13,6 +13,7 @@ interface Props {
   initialKey?: string;
   initialName?: string;
   initialRazorpayAccountId?: string;
+  routingEnabled?: boolean;
 }
 
 export function SettingsClientView({
@@ -21,6 +22,7 @@ export function SettingsClientView({
   initialKey = "",
   initialName = "",
   initialRazorpayAccountId = "",
+  routingEnabled = true,
 }: Props) {
   const [supabaseUrl, setSupabaseUrl] = useState(initialUrl);
   const [supabaseKey, setSupabaseKey] = useState(initialKey);
@@ -229,7 +231,8 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`}</code>
         </div>
       </section>
 
-      {/* Razorpay Payouts Section */}
+      {/* Razorpay Payouts Section — hidden when NEXT_PUBLIC_ROUTING=off */}
+      {routingEnabled && (
       <section className="space-y-6">
         <div className="border-b border-[#222] pb-2">
           <h2 className="text-lg font-medium text-white">Razorpay Payouts</h2>
@@ -311,6 +314,7 @@ GRANT EXECUTE ON FUNCTION exec_sql(text) TO authenticated;`}</code>
           </div>
         </div>
       </section>
+      )}
 
       <LegalConsentModal
         open={isModalOpen}
