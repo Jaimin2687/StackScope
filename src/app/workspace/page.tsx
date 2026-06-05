@@ -10,6 +10,7 @@ import { SUPPORTED_LANGUAGES, type GeneratedScope } from "@/lib/types";
 import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
 import dynamic from "next/dynamic";
+import type { UserTier } from "@/lib/billing";
 
 // Lazy-load heavy components — they're not needed until user interacts
 const AudioDropzone = dynamic(
@@ -36,6 +37,7 @@ function WorkspaceContent() {
   const [scopeResult, setScopeResult] = useState<GeneratedScope | null>(null);
   const [activeTab, setActiveTab] = useState<"proposal" | "tech_stack" | "sql_schema">("proposal");
   const [hasAutoRun, setHasAutoRun] = useState(false);
+  const [userTier, setUserTier] = useState<UserTier>("free");
 
   const pollJobStatus = async (jobId: string) => {
     const maxAttempts = 90;
@@ -125,6 +127,22 @@ function WorkspaceContent() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Fetch billing tier for feature gating
+    const fetchTier = async () => {
+      try {
+        const res = await fetch("/api/billing/tier");
+        if (res.ok) {
+          const data = await res.json();
+          setUserTier(data.tier as UserTier);
+        }
+      } catch {
+        // Non-fatal — default stays "free"
+      }
+    };
+    fetchTier();
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -279,13 +297,14 @@ function WorkspaceContent() {
             ) : scopeResult ? (
               <div className="flex-1 overflow-y-auto p-10">
                 <div className="max-w-4xl mx-auto">
-                    <ResultsView 
-                      scope={scopeResult} 
-                      activeTab={activeTab} 
-                      onTabChange={setActiveTab} 
-                      scopeId={id}
-                      onScopeUpdate={(newScope) => setScopeResult(newScope)}
-                    />
+                  <ResultsView 
+                    scope={scopeResult} 
+                    activeTab={activeTab} 
+                    onTabChange={setActiveTab} 
+                    scopeId={id}
+                    onScopeUpdate={(newScope) => setScopeResult(newScope)}
+                    userTier={userTier}
+                  />
                 </div>
               </div>
             ) : (

@@ -3,7 +3,7 @@
 import { GeneratedScope } from "@/lib/types";
 import { downloadScopePDF } from "@/lib/pdf-generator";
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, CheckCircle2, Download, Rocket, Settings2, X, Edit3, Save, Loader2, Sparkles, Send } from "lucide-react";
+import { Copy, CheckCircle2, Download, Rocket, Settings2, X, Edit3, Save, Loader2, Sparkles, Send, Lock } from "lucide-react";
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { InteractiveEstimates } from "./interactive-estimates";
@@ -11,6 +11,8 @@ import Link from "next/link";
 import { checkConfigurationStatus, saveEncryptedConfig } from "@/app/settings/actions";
 import { LegalConsentModal } from "./legal-consent-modal";
 import { useLegalConsentGate } from "@/hooks/use-legal-consent";
+import { canAccessFeature } from "@/lib/feature-access";
+import type { UserTier } from "@/lib/billing";
 
 // Heavy component - Code-split aggressively so initial renders aren't blocked by 1.5MB payload
 const MermaidDiagram = dynamic(() => import("./mermaid-diagram").then(mod => mod.MermaidDiagram), {
@@ -24,9 +26,10 @@ interface Props {
   onTabChange: (tab: "proposal" | "tech_stack" | "sql_schema") => void;
   scopeId?: string | null;
   onScopeUpdate?: (newScope: GeneratedScope) => void;
+  userTier?: UserTier;
 }
 
-export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props) {
+export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate, userTier = "free" }: Props) {
   const [copied, setCopied] = useState(false);
   const [deployStatus, setDeployStatus] = useState<"idle" | "deploying" | "success">("idle");
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -194,24 +197,41 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
     await requireConsent(runExport);
   };
 
+  const canExportPDF   = canAccessFeature(userTier, "pdf-export");
+  const canDeploy      = canAccessFeature(userTier, "deploy-schema");
+
   const renderActionBar = () => (
     <div className="flex justify-end relative z-10 gap-2 mb-6">
       <button
         onClick={() => setIsEditing(!isEditing)}
         className={`flex flex-shrink-0 items-center gap-2 px-3 py-1.5 ${isEditing ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30' : 'bg-[#111] hover:bg-[#222] text-neutral-300 border border-[#333]'} rounded-md text-[12px] font-medium transition-colors`}
-        >
-        {isEditing ? <><Save className="w-3.5 h-3.5" /> Save Edits</> : <><Edit3 className="w-3.5 h-3.5" /> Edit</>}
+      >
+        {isEditing ? <><Save className="w-3.5 h-3.5" />Save Edits</> : <><Edit3 className="w-3.5 h-3.5" />Edit</>}
       </button>
-      <button
-        onClick={handleExport}
-        disabled={isExporting}
-        className={`flex flex-shrink-0 items-center gap-2 px-3 py-1.5 ${isExporting ? 'bg-[#222] text-emerald-400/50 cursor-not-allowed' : 'bg-[#111] hover:bg-[#222] text-neutral-300'} border border-[#333] rounded-md text-[12px] font-medium transition-colors`}
+
+      {canExportPDF ? (
+        <button
+          onClick={handleExport}
+          disabled={isExporting}
+          className={`flex flex-shrink-0 items-center gap-2 px-3 py-1.5 ${isExporting ? 'bg-[#222] text-emerald-400/50 cursor-not-allowed' : 'bg-[#111] hover:bg-[#222] text-neutral-300'} border border-[#333] rounded-md text-[12px] font-medium transition-colors`}
         >
-        {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" /> : <Download className="w-3.5 h-3.5" />}
-        {isExporting ? 'Preparing Artifact...' : 'Export PDF'}
-      </button>
+          {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" /> : <Download className="w-3.5 h-3.5" />}
+          {isExporting ? 'Preparing Artifact...' : 'Export PDF'}
+        </button>
+      ) : (
+        <Link
+          href="/pricing"
+          title="White-labeled PDF export is a Pro feature"
+          className="flex flex-shrink-0 items-center gap-2 px-3 py-1.5 bg-[#0a0a0a] text-neutral-600 border border-[#222] rounded-md text-[12px] font-medium cursor-pointer hover:border-amber-500/40 hover:text-amber-400 transition-colors group"
+        >
+          <Lock className="w-3.5 h-3.5 group-hover:text-amber-400" />
+          Export PDF
+        </Link>
+      )}
     </div>
-  );  const containerState = {
+  );
+
+  const containerState = {
     hidden: { opacity: 0, y: 10 },
     show: { opacity: 1, y: 0, transition: { staggerChildren: 0.05 } }
   };
@@ -679,37 +699,50 @@ export function ResultsView({ scope, activeTab, scopeId, onScopeUpdate }: Props)
       <motion.div variants={containerState} initial="hidden" animate="show" className="relative group pb-20 space-y-4">
         {renderActionBar()}
         
-        {/* 1-Click Provisioning Mock */}
-        <motion.div variants={itemState} className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center p-4 border border-[#222] bg-[#0a0a0a] rounded-lg">                                                                                                      
+        {/* 1-Click Provisioning */}
+        <motion.div variants={itemState} className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center p-4 border border-[#222] bg-[#0a0a0a] rounded-lg">
           <div>
             <h3 className="text-sm font-medium text-white mb-1">Database Provisioning</h3>
             <p className="text-xs text-neutral-500">Deploy this schema directly to your connected Supabase project.</p>
           </div>
           <div className="flex items-center gap-2">
-            {!hasConfig && (
-              <button 
-                onClick={() => setShowConfigModal(true)}
-                className="p-2 rounded-md hover:bg-[#222] text-neutral-500 hover:text-white transition-colors border border-[#333]"
-                title="Configure Database"
+            {canDeploy ? (
+              <>
+                {!hasConfig && (
+                  <button
+                    onClick={() => setShowConfigModal(true)}
+                    className="p-2 rounded-md hover:bg-[#222] text-neutral-500 hover:text-white transition-colors border border-[#333]"
+                    title="Configure Database"
+                  >
+                    <Settings2 className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  onClick={handleDeploy}
+                  disabled={deployStatus !== "idle"}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md justify-center text-sm font-medium transition-all ${
+                    deployStatus === "idle" ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/20" :
+                    deployStatus === "deploying" ? "bg-blue-500/10 text-blue-500 border border-blue-500/20 cursor-wait" :
+                    "bg-green-500/10 text-green-500 border border-green-500/20 cursor-default"
+                  }`}
+                >
+                  {deployStatus === "idle" && <><Rocket className="w-4 h-4" /> 1-Click Deploy</>}
+                  {deployStatus === "deploying" && (
+                    <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, ease: "linear", duration: 1 }} className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" /> Executing SQL...</>
+                  )}
+                  {deployStatus === "success" && <><CheckCircle2 className="w-4 h-4" /> Deployed Successfully</>}
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/pricing"
+                title="1-Click Supabase deploy is a Pro feature"
+                className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border border-[#222] text-neutral-600 hover:border-amber-500/40 hover:text-amber-400 transition-colors group"
               >
-                <Settings2 className="w-4 h-4" />
-              </button>
+                <Lock className="w-4 h-4 group-hover:text-amber-400" />
+                Upgrade to Deploy
+              </Link>
             )}
-            <button 
-              onClick={handleDeploy}
-              disabled={deployStatus !== "idle"}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md justify-center text-sm font-medium transition-all ${
-                deployStatus === "idle" ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/20" :
-                deployStatus === "deploying" ? "bg-blue-500/10 text-blue-500 border border-blue-500/20 cursor-wait" :
-                "bg-green-500/10 text-green-500 border border-green-500/20 cursor-default"
-              }`}
-            >
-              {deployStatus === "idle" && <><Rocket className="w-4 h-4" /> 1-Click Deploy</>}
-              {deployStatus === "deploying" && (
-                <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, ease: "linear", duration: 1 }} className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" /> Executing SQL...</>                                                    
-              )}
-              {deployStatus === "success" && <><CheckCircle2 className="w-4 h-4" /> Deployed Successfully</>}
-            </button>
           </div>
         </motion.div>
 

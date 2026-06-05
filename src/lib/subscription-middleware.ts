@@ -110,7 +110,7 @@ export function invalidateAllCache(): void {
 }
 
 export function createSubscriptionMiddleware(
-  featureRequiredTier?: "pro" | "free"
+  featureRequiredTier?: "pro" | "agency" | "free"
 ) {
   return async (
     req: NextRequest,
@@ -120,12 +120,18 @@ export function createSubscriptionMiddleware(
     try {
       const context = await validateSubscription(supabase, userId);
 
-      // Check feature access
-      if (featureRequiredTier === "pro" && context.billing.tier === "free") {
+      const TIER_RANK: Record<string, number> = { free: 0, pro: 1, agency: 2 };
+      const userRank = TIER_RANK[context.billing.tier] ?? 0;
+      const requiredRank = featureRequiredTier ? (TIER_RANK[featureRequiredTier] ?? 0) : 0;
+
+      // Check feature tier access
+      if (featureRequiredTier && userRank < requiredRank) {
+        const upgradeTarget =
+          featureRequiredTier === "agency" ? "Agency Blueprint" : "Pro";
         return {
           response: NextResponse.json(
             {
-              error: "This feature requires a Pro subscription",
+              error: `This feature requires the ${upgradeTarget} plan`,
               upgradeUrl: "/pricing",
             },
             { status: 403 }

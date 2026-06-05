@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isDemoUser, getDemoBillingSnapshot } from "./demo-user";
 
-export type UserTier = "free" | "pro";
+export type UserTier = "free" | "pro" | "agency";
 
 export type BillingSnapshot = {
   subscriptionStatus: string;
@@ -38,12 +38,21 @@ const TIER_LIMITS: Record<UserTier, TierLimits> = {
     maxTreeDepth: 10,
     maxContextChars: 32000,
   },
+  agency: {
+    maxTreeTokens: 9000,   // same generation quality as pro
+    maxTreeItems: 20000,
+    maxTreeDepth: 10,
+    maxContextChars: 32000,
+  },
 };
 
 export function resolveUserTier(status: string | null | undefined): UserTier {
   const normalized = String(status || "").toLowerCase();
   if (["active", "paid", "trialing"].includes(normalized)) {
     return "pro";
+  }
+  if (["agency", "agency_active", "agency_paid"].includes(normalized)) {
+    return "agency";
   }
   return "free";
 }
