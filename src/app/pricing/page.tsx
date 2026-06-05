@@ -1,36 +1,17 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import { TopNav } from "@/components/top-nav";
-import { Check, Info, ArrowRight, Zap, Target, Briefcase, Loader2, X, AlertCircle } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-
-// Razorpay global type
-declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Razorpay: any;
-  }
-}
-
-function loadRazorpayScript(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof window.Razorpay !== "undefined") return resolve(true);
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
+import { Check, Info, ArrowRight, Zap, Target, Briefcase } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { PricingCheckoutModal } from "./PricingCheckoutModal";
 
 export default function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
-  const [checkoutState, setCheckoutState] = useState<
-    "idle" | "loading" | "success" | "error"
-  >("idle");
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [activePlanName, setActivePlanName] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<{
+    name: string;
+    priceRaw: number;
+  } | null>(null);
 
   const plans = [
     {
@@ -97,70 +78,13 @@ export default function PricingPage() {
     },
   ];
 
-  const handleSubscribe = useCallback(
-    async (planName: string, priceRaw: number) => {
-      // Free plan — go to workspace directly
-      if (priceRaw === 0) {
-        window.location.href = "/workspace";
-        return;
-      }
-
-      setCheckoutState("loading");
-      setCheckoutError(null);
-      setActivePlanName(planName);
-
-      try {
-        // 1. Load Razorpay SDK
-        const sdkLoaded = await loadRazorpayScript();
-        if (!sdkLoaded) throw new Error("Failed to load payment gateway. Please try again.");
-
-        // 2. Create subscription server-side
-        const res = await fetch("/api/payments/create-subscription", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plan: planName, cycle: billingCycle }),
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data?.error || "Could not initialise subscription.");
-        }
-
-        const { subscription_id } = data;
-
-        // 3. Open Razorpay checkout
-        const rzp = new window.Razorpay({
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-          subscription_id,
-          name: "StackScope",
-          description: `${planName} — ${billingCycle}`,
-          image: "/favicon.ico",
-          theme: { color: "#ffffff" },
-          handler: () => {
-            // Payment captured — webhook will activate Pro in the background
-            setCheckoutState("success");
-          },
-          modal: {
-            ondismiss: () => {
-              // User closed the modal without paying
-              setCheckoutState("idle");
-              setActivePlanName(null);
-            },
-          },
-        });
-
-        rzp.open();
-        // While Razorpay modal is open, show a neutral state (not loading)
-        setCheckoutState("idle");
-      } catch (err: unknown) {
-        const e = err as Error;
-        setCheckoutError(e.message || "Payment failed. Please try again.");
-        setCheckoutState("error");
-      }
-    },
-    [billingCycle]
-  );
+  const handleSubscribe = (planName: string, priceRaw: number) => {
+    if (priceRaw === 0) {
+      window.location.href = "/workspace";
+      return;
+    }
+    setSelectedPlan({ name: planName, priceRaw });
+  };
 
   return (
     <div className="min-h-screen bg-[#050505] text-white selection:bg-white selection:text-black pb-20">
@@ -266,30 +190,17 @@ export default function PricingPage() {
                 </p>
               </div>
 
-              {/* CTA button */}
               <button
                 onClick={() => handleSubscribe(plan.name, plan.priceRaw)}
-                disabled={checkoutState === "loading" && activePlanName === plan.name}
-                className={`w-full py-3 rounded-lg font-medium transition-all mb-8 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-wait
+                className={`w-full py-3 rounded-lg font-medium transition-all mb-8 flex items-center justify-center gap-2
                   ${
                     plan.popular
                       ? "bg-white text-black hover:bg-neutral-200"
                       : "bg-[#111] text-white border border-[#333] hover:bg-[#222]"
                   }`}
               >
-                {checkoutState === "loading" && activePlanName === plan.name ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Opening checkout…
-                  </>
-                ) : plan.priceRaw === 0 ? (
-                  "Start Free"
-                ) : (
-                  <>
-                    Get {plan.name.split(" ").slice(-1)[0]}
-                    {plan.popular && <ArrowRight className="w-4 h-4" />}
-                  </>
-                )}
+                {plan.priceRaw === 0 ? "Start Free" : `Get ${plan.name.split(" ").slice(-1)[0]}`}
+                {plan.popular && <ArrowRight className="w-4 h-4" />}
               </button>
 
               <div className="space-y-4 flex-1">
@@ -318,62 +229,18 @@ export default function PricingPage() {
             </motion.div>
           ))}
         </div>
-
-        {/* ── Success overlay ── */}
-        <AnimatePresence>
-          {checkoutState === "success" && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="w-full max-w-md bg-[#0a0a0a] border border-emerald-500/30 rounded-2xl shadow-2xl p-8 text-center space-y-4"
-              >
-                <div className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
-                  <Check className="w-7 h-7 text-emerald-400" />
-                </div>
-                <h3 className="text-xl font-semibold text-white">Payment successful!</h3>
-                <p className="text-sm text-neutral-400 leading-relaxed">
-                  Your Pro subscription is being activated. It may take a moment — your
-                  dashboard will reflect the upgrade within a few seconds.
-                </p>
-                <button
-                  onClick={() => (window.location.href = "/dashboard")}
-                  className="w-full py-3 rounded-lg bg-white text-black font-medium hover:bg-neutral-200 transition-colors"
-                >
-                  Go to Dashboard
-                </button>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ── Error toast ── */}
-        <AnimatePresence>
-          {checkoutState === "error" && checkoutError && (
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 40 }}
-              className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-[#1a0a0a] border border-red-900/40 text-red-400 px-5 py-3 rounded-xl shadow-xl text-sm max-w-sm"
-            >
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{checkoutError}</span>
-              <button
-                onClick={() => { setCheckoutState("idle"); setCheckoutError(null); }}
-                className="ml-auto text-red-600 hover:text-red-400"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </main>
+
+      {/* Checkout modal — mounts only when a paid plan is selected */}
+      <AnimatePresence>
+        {selectedPlan && (
+          <PricingCheckoutModal
+            planName={selectedPlan.name}
+            priceRupees={selectedPlan.priceRaw}
+            onClose={() => setSelectedPlan(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
