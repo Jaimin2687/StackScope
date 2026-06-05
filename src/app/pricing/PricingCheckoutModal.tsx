@@ -101,75 +101,65 @@ export function PricingCheckoutModal({
 
     setState("creating");
 
-    // ── Step 1: Create subscription (backend) ────────────────
-    let subscriptionId: string | undefined;
-    let orderId: string | undefined;
-    let amountPaise: number | undefined;
+    // ── Step 1: Create one-time order (works without recurring approval) ──────
+    let orderId: string;
+    let amountPaise: number;
 
     try {
-      const subRes = await fetch("/api/payments/create-subscription", {
+      const orderRes = await fetch("/api/payments/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: planName }),
+        body: JSON.stringify({
+          amount: priceRupees,
+          receipt: `${planName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`.slice(0, 40),
+        }),
       });
 
-      const subData = (await subRes.json()) as Record<string, unknown>;
+      const orderData = (await orderRes.json()) as Record<string, unknown>;
 
-      if (!subRes.ok) {
-        // Subscription API failed — fall back to one-time order for checkout
-        console.warn("[checkout] subscription creation failed, falling back to order:", subData);
-
-        const orderRes = await fetch("/api/payments/create-order", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: priceRupees, receipt: `${planName}-checkout` }),
-        });
-
-        const orderData = (await orderRes.json()) as Record<string, unknown>;
-
-        if (!orderRes.ok) {
-          throw new Error((orderData.error as string) || "Could not initialise checkout.");
-        }
-
-        orderId = orderData.order_id as string;
-        amountPaise = orderData.amount as number;
-      } else {
-        subscriptionId = subData.subscription_id as string;
+      if (!orderRes.ok) {
+        throw new Error((orderData.error as string) || "Could not initialise checkout.");
       }
+
+      orderId = orderData.order_id as string;
+      amountPaise = orderData.amount as number;
     } catch (err: unknown) {
       setErrorMessage((err as Error).message || "Failed to start checkout.");
       setState("error");
       return;
     }
 
-    // ── Step 2: Open Razorpay modal ──────────────────────────
+    // ── Step 2: Open Razorpay modal ──────────────────────────────────────────
     setState("modal-open");
 
     const razorpayOptions: RazorpayOptions = {
       key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
+      order_id: orderId,
+      amount: amountPaise,
+      currency: "INR",
       name: "StackScope",
       description: `${planName} — ₹${priceRupees}/month`,
       prefill: { email: userEmail },
       notes: { plan: planName },
       theme: { color: "#6366f1" },
       modal: {
-        ondismiss: () => {
-          setState("cancelled");
-        },
+        ondismiss: () => setState("cancelled"),
         animation: true,
       },
       handler: async (response: RazorpaySuccessResponse) => {
         setState("verifying");
 
-        // ── Step 3: Verify signature (backend) ──────────────
+        // ── Step 3: Verify signature + activate Pro (backend) ────────────────
         try {
           const verifyRes = await fetch("/api/payments/verify-payment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_order_id: response.razorpay_order_id || orderId || "",
+              razorpay_order_id: response.razorpay_order_id || orderId,
               razorpay_signature: response.razorpay_signature,
+              plan_name: planName,
+              price_rupees: priceRupees,
             }),
           });
 
@@ -189,15 +179,6 @@ export function PricingCheckoutModal({
       },
     };
 
-    // Attach either subscription_id or order_id to the options
-    if (subscriptionId) {
-      razorpayOptions.subscription_id = subscriptionId;
-    } else if (orderId && amountPaise) {
-      razorpayOptions.order_id = orderId;
-      razorpayOptions.amount = amountPaise;
-      razorpayOptions.currency = "INR";
-    }
-
     const rzp = new window.Razorpay(razorpayOptions);
 
     rzp.on("payment.failed", (response: unknown) => {
@@ -208,6 +189,7 @@ export function PricingCheckoutModal({
 
     rzp.open();
   }, [scriptLoaded, planName, priceRupees, userEmail]);
+
 
   /* ── Render helpers ──────────────────────────────────────── */
   const isLoading = state === "creating" || state === "verifying";
@@ -248,13 +230,13 @@ export function PricingCheckoutModal({
     success: {
       icon: <CheckCircle className="w-12 h-12 text-emerald-400" />,
       title: "Payment successful! 🎉",
-      subtitle: "Your Pro subscription is now active. Refresh the page to see your new limits.",
+      subtitle: "Your Pro access is now active for 30 days. Reload the page to unlock all features.",
       action: (
         <button
-          onClick={onClose}
+          onClick={() => window.location.reload()}
           className="w-full h-11 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-all duration-200"
         >
-          Continue to Dashboard
+          Reload & Start Using Pro
         </button>
       ),
     },
