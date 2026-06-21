@@ -29,8 +29,20 @@ export type TierLimits = {
   maxContextChars: number;
 };
 
-// Free-tier users get 4 scope generations per month with unlimited edits.
-const DEFAULT_MONTHLY_QUOTA = 4;
+/**
+ * Free-tier monthly scope quota.
+ * Override at any time by setting FREE_TIER_MONTHLY_QUOTA in your environment.
+ * Defaults to 4 if unset or invalid.
+ */
+function getFreeTierQuota(): number {
+  const raw = process.env.FREE_TIER_MONTHLY_QUOTA;
+  if (!raw) return 4;
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 4;
+}
+
+// Evaluated once per cold start — stable for the lifetime of the Lambda/Edge fn.
+const DEFAULT_MONTHLY_QUOTA = getFreeTierQuota();
 
 const TIER_LIMITS: Record<UserTier, TierLimits> = {
   free: {
