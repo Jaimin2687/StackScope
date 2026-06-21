@@ -97,6 +97,23 @@ export function estimateTokenCount(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/**
+ * Resolve the effective monthly quota for a given tier and DB-stored quota.
+ *
+ * FREE users always get the live env-var value — so changing
+ * FREE_TIER_MONTHLY_QUOTA + redeploying instantly applies to everyone
+ * without any SQL backfill.
+ *
+ * Paid/agency users keep the quota stored in the DB (set by subscription
+ * webhooks), which allows custom per-account overrides if needed.
+ */
+export function resolveQuota(tier: UserTier, dbQuota: number | null | undefined): number {
+  if (tier === "free") return getFreeTierQuota();
+  if (tier === "agency") return 0; // 0 = unlimited
+  // pro: use DB value, fall back to env quota if DB is unset
+  return dbQuota ?? getFreeTierQuota();
+}
+
 export function getCurrentUsagePeriod(now = new Date()): UsagePeriod {
   const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
@@ -124,6 +141,9 @@ export async function getOrCreateBillingSnapshot(
   }
 
   if (!data) {
+    // First visit — create the billing record.
+    // We store DEFAULT_MONTHLY_QUOTA in the DB but it is only used for
+    // paid tiers; free tier always reads from the env var at runtime.
     const { data: inserted, error: insertError } = await supabase
       .from("user_billing")
       .insert({
@@ -138,17 +158,21 @@ export async function getOrCreateBillingSnapshot(
       throw new Error(insertError?.message || "Failed to initialize billing record");
     }
 
+    const insertedTier = resolveUserTier(inserted.razorpay_subscription_status);
     return {
       subscriptionStatus: inserted.razorpay_subscription_status,
-      monthlyQuota: inserted.monthly_quota ?? DEFAULT_MONTHLY_QUOTA,
-      tier: resolveUserTier(inserted.razorpay_subscription_status),
+      monthlyQuota: resolveQuota(insertedTier, inserted.monthly_quota),
+      tier: insertedTier,
     };
   }
 
+  const tier = resolveUserTier(data.razorpay_subscription_status);
   return {
     subscriptionStatus: data.razorpay_subscription_status,
-    monthlyQuota: data.monthly_quota ?? DEFAULT_MONTHLY_QUOTA,
-    tier: resolveUserTier(data.razorpay_subscription_status),
+    // Free users: always use the live env var — DB value is intentionally ignored.
+    // This means FREE_TIER_MONTHLY_QUOTA changes take effect on next cold start.
+    monthlyQuota: resolveQuota(tier, data.monthly_quota),
+    tier,
   };
 }
 
@@ -186,7 +210,7 @@ export async function getOrgBillingSnapshot(
     .limit(1)
     .maybeSingle();
 
-  let monthlyQuota = DEFAULT_MONTHLY_QUOTA;
+  let dbQuota: number | null = null;
 
   if (ownerMember?.user_id) {
     const { data: ownerBilling } = await supabase
@@ -195,7 +219,7 @@ export async function getOrgBillingSnapshot(
       .eq("user_id", ownerMember.user_id)
       .maybeSingle();
     if (ownerBilling?.monthly_quota != null) {
-      monthlyQuota = ownerBilling.monthly_quota;
+      dbQuota = ownerBilling.monthly_quota;
     }
   }
 
@@ -203,7 +227,8 @@ export async function getOrgBillingSnapshot(
 
   return {
     subscriptionStatus: org.subscription_status,
-    monthlyQuota: tier === "agency" ? 0 : monthlyQuota, // 0 = unlimited for agency
+    // Free orgs also use the env var — resolveQuota() handles all tiers uniformly.
+    monthlyQuota: resolveQuota(tier, dbQuota),
     tier,
   };
 }
