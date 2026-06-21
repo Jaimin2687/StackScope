@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { getOrCreateBillingSnapshot, getCurrentUsagePeriod, BillingSnapshot } from "./billing";
+import { getOrCreateBillingSnapshot, getCurrentUsagePeriod, BillingSnapshot, getOrgBillingSnapshot } from "./billing";
 
 export type SubscriptionContext = {
   userId: string;
+  orgId?: string;
   billing: BillingSnapshot;
   quotaRemaining: number;
   quotaUsed: number;
@@ -22,33 +23,40 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export async function validateSubscription(
   supabase: SupabaseClient,
   userId: string,
-  option?: { skipQuotaCheck?: boolean }
+  option?: { skipQuotaCheck?: boolean; orgId?: string }
 ): Promise<SubscriptionContext> {
+  const orgId = option?.orgId;
+  const cacheKey = orgId ? `org:${orgId}` : `user:${userId}`;
+
   // Check cache first
-  const cached = subscriptionCache.get(userId);
+  const cached = subscriptionCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     const billing = cached.billing;
-    const context = await buildContext(supabase, userId, billing, option);
-    return context;
+    return buildContext(supabase, userId, billing, option);
   }
 
-  // Fetch from database if not cached
-  const billing = await getOrCreateBillingSnapshot(supabase, userId);
-  subscriptionCache.set(userId, { billing, timestamp: Date.now() });
+  // Fetch from database — org-aware path
+  const billing = orgId
+    ? await getOrgBillingSnapshot(supabase, orgId, userId)
+    : await getOrCreateBillingSnapshot(supabase, userId);
 
-  const context = await buildContext(supabase, userId, billing, option);
-  return context;
+  subscriptionCache.set(cacheKey, { billing, timestamp: Date.now() });
+
+  return buildContext(supabase, userId, billing, option);
 }
 
 async function buildContext(
   supabase: SupabaseClient,
   userId: string,
   billing: BillingSnapshot,
-  option?: { skipQuotaCheck?: boolean }
+  option?: { skipQuotaCheck?: boolean; orgId?: string }
 ): Promise<SubscriptionContext> {
+  const orgId = option?.orgId;
+
   if (option?.skipQuotaCheck) {
     return {
       userId,
+      orgId,
       billing,
       quotaRemaining: billing.monthlyQuota,
       quotaUsed: 0,
@@ -58,42 +66,81 @@ async function buildContext(
 
   const usagePeriod = getCurrentUsagePeriod();
 
-  // Get completed usage
-  const { data: usageRow, error: usageError } = await supabase
-    .from("user_usage")
-    .select("requests_used")
-    .eq("user_id", userId)
-    .eq("period_start", usagePeriod.start)
-    .maybeSingle();
+  let totalUsed = 0;
 
-  if (usageError) {
-    throw new Error(`Failed to read usage: ${usageError.message}`);
+  if (orgId) {
+    // ── Org-scoped usage: aggregate across ALL active org members ──────────
+    // Get all active member user IDs for this org
+    const { data: members } = await supabase
+      .from("organization_members")
+      .select("user_id")
+      .eq("org_id", orgId)
+      .eq("status", "active")
+      .not("user_id", "is", null);
+
+    const memberIds = (members || []).map((m: { user_id: string }) => m.user_id).filter(Boolean);
+
+    if (memberIds.length > 0) {
+      // Sum completed usage across all members
+      const { data: usageRows } = await supabase
+        .from("user_usage")
+        .select("requests_used")
+        .in("user_id", memberIds)
+        .eq("period_start", usagePeriod.start);
+
+      const completedUsage = (usageRows || []).reduce(
+        (sum: number, row: { requests_used: number }) => sum + (row.requests_used ?? 0),
+        0
+      );
+
+      // Sum in-flight jobs
+      const { count: queuedCount } = await supabase
+        .from("scope_jobs")
+        .select("id", { count: "exact", head: true })
+        .in("user_id", memberIds)
+        .in("status", ["queued", "processing"])
+        .gte("created_at", usagePeriod.startDate.toISOString())
+        .lt("created_at", usagePeriod.endDate.toISOString());
+
+      totalUsed = completedUsage + (queuedCount ?? 0);
+    }
+  } else {
+    // ── Legacy single-user usage ───────────────────────────────────────────
+    const { data: usageRow, error: usageError } = await supabase
+      .from("user_usage")
+      .select("requests_used")
+      .eq("user_id", userId)
+      .eq("period_start", usagePeriod.start)
+      .maybeSingle();
+
+    if (usageError) {
+      throw new Error(`Failed to read usage: ${usageError.message}`);
+    }
+
+    const { count: queuedCount, error: queuedError } = await supabase
+      .from("scope_jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .in("status", ["queued", "processing"])
+      .gte("created_at", usagePeriod.startDate.toISOString())
+      .lt("created_at", usagePeriod.endDate.toISOString());
+
+    if (queuedError) {
+      throw new Error(`Failed to read queued usage: ${queuedError.message}`);
+    }
+
+    totalUsed = (usageRow?.requests_used ?? 0) + (queuedCount ?? 0);
   }
 
-  const completedUsage = usageRow?.requests_used ?? 0;
-
-  // Get queued/processing jobs in this period
-  const { count: queuedCount, error: queuedError } = await supabase
-    .from("scope_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .in("status", ["queued", "processing"])
-    .gte("created_at", usagePeriod.startDate.toISOString())
-    .lt("created_at", usagePeriod.endDate.toISOString());
-
-  if (queuedError) {
-    throw new Error(`Failed to read queued usage: ${queuedError.message}`);
-  }
-
-  const totalUsed = completedUsage + (queuedCount ?? 0);
   const quotaRemaining = Math.max(0, billing.monthlyQuota - totalUsed);
 
   return {
     userId,
+    orgId,
     billing,
     quotaRemaining,
     quotaUsed: totalUsed,
-    canProceed: quotaRemaining > 0 || billing.monthlyQuota === 0, // Pro tier has 0 quota (unlimited)
+    canProceed: quotaRemaining > 0 || billing.monthlyQuota === 0, // 0 = unlimited for agency
     reason:
       quotaRemaining === 0 && billing.monthlyQuota > 0
         ? "Monthly quota exceeded"
@@ -101,8 +148,8 @@ async function buildContext(
   };
 }
 
-export function invalidateSubscriptionCache(userId: string): void {
-  subscriptionCache.delete(userId);
+export function invalidateSubscriptionCache(userId: string, orgId?: string): void {
+  subscriptionCache.delete(orgId ? `org:${orgId}` : `user:${userId}`);
 }
 
 export function invalidateAllCache(): void {
@@ -115,10 +162,11 @@ export function createSubscriptionMiddleware(
   return async (
     req: NextRequest,
     userId: string,
-    supabase: SupabaseClient
+    supabase: SupabaseClient,
+    orgId?: string
   ): Promise<{ response: NextResponse | null; context: SubscriptionContext | null }> => {
     try {
-      const context = await validateSubscription(supabase, userId);
+      const context = await validateSubscription(supabase, userId, { orgId });
 
       const TIER_RANK: Record<string, number> = { free: 0, pro: 1, agency: 2 };
       const userRank = TIER_RANK[context.billing.tier] ?? 0;

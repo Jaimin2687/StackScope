@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { CopyPlus, LayoutDashboard, Settings, LogOut, TerminalSquare, FileCode } from "lucide-react";
+import { CopyPlus, LayoutDashboard, Settings, LogOut, TerminalSquare, FileCode, Users } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/watermelon";
 import { useState } from "react";
@@ -99,6 +99,16 @@ export function SideNav() {
             >
               <Settings className="w-4 h-4" />
               Settings
+            </Button>
+          </Link>
+          <Link href="/settings/team">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`w-full justify-start gap-3 rounded-md ${pathname.startsWith('/settings/team') ? 'text-white bg-[#111] border border-[#222]' : ''}`}
+            >
+              <Users className="w-4 h-4" />
+              Team
             </Button>
           </Link>
           {/* ── Watermelon UI: Button (ghost) for Sign Out ── */}

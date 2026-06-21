@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { patchScopeWithFailover } from "@/lib/llm";
 import { getClientIp, isJsonRequest, isSameOrigin, rateLimit } from "@/lib/security";
 
@@ -17,7 +18,8 @@ export async function POST(req: NextRequest) {
     }
 
     const ip = getClientIp(req);
-    const limiter = rateLimit({ key: `patch-scope:${ip}`, limit: 20, windowMs: 60_000 });
+    // Edits are unlimited — but rate-limit to prevent abuse
+    const limiter = rateLimit({ key: `patch-scope:${ip}`, limit: 30, windowMs: 60_000 });
     if (!limiter.allowed) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
@@ -40,23 +42,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Verify the user owns (or is an org member of) the scope they're editing ──
+    // This prevents arbitrary scope editing — the scope must exist and be
+    // accessible to this user via RLS. We use the user's supabase client
+    // (RLS enforced) so org members can edit org-owned scopes too.
+    if (scopeId) {
+      const { data: scopeCheck, error: scopeCheckError } = await supabase
+        .from("client_scopes")
+        .select("id, user_id, org_id")
+        .eq("id", scopeId)
+        .maybeSingle();
+
+      if (scopeCheckError || !scopeCheck) {
+        return NextResponse.json(
+          { error: "Scope not found or access denied" },
+          { status: 403 }
+        );
+      }
+    }
+
     const { scope: newScopeData, providerUsed } = await patchScopeWithFailover(
       currentScope,
       userMessage,
       targetLanguage
     );
 
-    // Fire-and-forget DB update — don't block the user's response
+    // ── Persist the edit (fire-and-forget, use admin client to bypass RLS for write) ──
+    // Admin write is safe here because we already verified access above via the
+    // user's own client. We use admin for the write to avoid RLS policy conflicts
+    // on UPDATE (which requires the scope to be in the user's writable set).
     if (scopeId) {
+      const admin = createAdminClient();
       (async () => {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await admin
           .from("client_scopes")
           .update({
             generated_proposal: { providerUsed, ...newScopeData },
-            generated_sql: newScopeData.sql_schema
+            generated_sql: newScopeData.sql_schema,
           })
-          .eq("id", scopeId)
-          .eq("user_id", user.id);
+          .eq("id", scopeId);
         if (updateError) {
           console.error("[patch-scope] Background DB update failed:", updateError);
         }

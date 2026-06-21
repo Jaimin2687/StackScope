@@ -1,40 +1,32 @@
 /**
- * Demo / test-user utilities.
+ * demo-user.ts — RETIRED
  *
- * Set DEMO_USER_EMAIL in your environment to designate a single account that
- * always receives full Pro access with unlimited quota — no payment required.
- * Hand these credentials to clients for evaluation.
+ * The demo-login flow has been removed. Free-tier users now receive
+ * 4 scope generations per month with unlimited edits as a built-in
+ * trial experience — no separate demo account needed.
  *
- * Usage:
- *   DEMO_USER_EMAIL=demo@yourapp.com   (in .env.local / Vercel env vars)
+ * These stubs are kept so that existing imports compile without changes.
+ * All functions are no-ops that return safe defaults.
  */
 
 import type { BillingSnapshot } from "./billing";
 
-/** Returns the configured demo email, lower-cased, or null if not set. */
+/** @deprecated Always returns null — demo mode is disabled. */
 export function getDemoEmail(): string | null {
-  const raw = process.env.DEMO_USER_EMAIL;
-  return raw ? raw.trim().toLowerCase() : null;
+  return null;
 }
 
-/**
- * Returns true when the supplied email matches the demo user.
- * Safe to call server-side only — never expose DEMO_USER_EMAIL to the client.
- */
-export function isDemoUser(email: string | null | undefined): boolean {
-  const demoEmail = getDemoEmail();
-  if (!demoEmail || !email) return false;
-  return email.trim().toLowerCase() === demoEmail;
+/** @deprecated Always returns false — demo mode is disabled. */
+export function isDemoUser(_email: string | null | undefined): boolean {
+  return false;
 }
 
-/**
- * Returns a fully-unlocked BillingSnapshot for the demo account.
- * monthly_quota = 0  →  unlimited (subscription-middleware treats 0 as unlimited)
- */
+/** @deprecated Never called — demo mode is disabled. */
 export function getDemoBillingSnapshot(): BillingSnapshot {
+  // Fallback to free tier — should never be reached
   return {
-    subscriptionStatus: "active",
-    monthlyQuota: 0, // 0 = unlimited (see subscription-middleware line: monthlyQuota === 0)
-    tier: "pro",
+    subscriptionStatus: "free",
+    monthlyQuota: 4,
+    tier: "free",
   };
 }

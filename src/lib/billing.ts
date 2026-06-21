@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isDemoUser, getDemoBillingSnapshot } from "./demo-user";
+// demo-user is retired; kept import so the module stub resolves cleanly
+// (isDemoUser always returns false, getDemoBillingSnapshot is unreachable)
+
+export type OrgContext = {
+  orgId: string;
+  role: 'owner' | 'admin' | 'member';
+};
 
 export type UserTier = "free" | "pro" | "agency";
 
@@ -23,7 +29,8 @@ export type TierLimits = {
   maxContextChars: number;
 };
 
-const DEFAULT_MONTHLY_QUOTA = 3;
+// Free-tier users get 4 scope generations per month with unlimited edits.
+const DEFAULT_MONTHLY_QUOTA = 4;
 
 const TIER_LIMITS: Record<UserTier, TierLimits> = {
   free: {
@@ -57,6 +64,18 @@ export function resolveUserTier(status: string | null | undefined): UserTier {
   return "free";
 }
 
+/**
+ * Resolve a tier from an organization's subscription_status.
+ * Agency orgs map to 'agency' tier; active/trialing individual plans map to 'pro'.
+ */
+export function resolveOrgTier(subscriptionStatus: string | null | undefined): UserTier {
+  const normalized = String(subscriptionStatus || "").toLowerCase();
+  if (["active", "trialing"].includes(normalized)) {
+    return "agency"; // org subscriptions are always the agency plan
+  }
+  return "free";
+}
+
 export function getTierLimits(tier: UserTier): TierLimits {
   return TIER_LIMITS[tier];
 }
@@ -82,13 +101,6 @@ export async function getOrCreateBillingSnapshot(
   supabase: SupabaseClient,
   userId: string
 ): Promise<BillingSnapshot> {
-  // ── Demo / test-user fast path ─────────────────────────────────────────────
-  // If DEMO_USER_EMAIL is set and this user matches, grant full Pro + unlimited
-  // quota without any DB interaction.
-  const { data: { user } } = await supabase.auth.getUser();
-  if (isDemoUser(user?.email)) {
-    return getDemoBillingSnapshot();
-  }
   const { data, error } = await supabase
     .from("user_billing")
     .select("razorpay_subscription_status, monthly_quota")
@@ -125,5 +137,61 @@ export async function getOrCreateBillingSnapshot(
     subscriptionStatus: data.razorpay_subscription_status,
     monthlyQuota: data.monthly_quota ?? DEFAULT_MONTHLY_QUOTA,
     tier: resolveUserTier(data.razorpay_subscription_status),
+  };
+}
+
+/**
+ * Resolve billing for an org by reading from the organization row directly.
+ * The org's subscription_status drives the tier; monthly_quota comes from
+ * the owner's user_billing record (the first owner we find).
+ *
+ * Falls back to getOrCreateBillingSnapshot() if the org has no active owner.
+ */
+export async function getOrgBillingSnapshot(
+  supabase: SupabaseClient,
+  orgId: string,
+  fallbackUserId: string
+): Promise<BillingSnapshot> {
+  // Fetch org subscription status
+  const { data: org, error: orgError } = await supabase
+    .from("organizations")
+    .select("subscription_status, razorpay_subscription_id")
+    .eq("id", orgId)
+    .maybeSingle();
+
+  if (orgError || !org) {
+    // Org not found — fall back to personal billing
+    return getOrCreateBillingSnapshot(supabase, fallbackUserId);
+  }
+
+  // Fetch the owner's billing to get monthly_quota
+  const { data: ownerMember } = await supabase
+    .from("organization_members")
+    .select("user_id")
+    .eq("org_id", orgId)
+    .eq("role", "owner")
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+
+  let monthlyQuota = DEFAULT_MONTHLY_QUOTA;
+
+  if (ownerMember?.user_id) {
+    const { data: ownerBilling } = await supabase
+      .from("user_billing")
+      .select("monthly_quota")
+      .eq("user_id", ownerMember.user_id)
+      .maybeSingle();
+    if (ownerBilling?.monthly_quota != null) {
+      monthlyQuota = ownerBilling.monthly_quota;
+    }
+  }
+
+  const tier = resolveOrgTier(org.subscription_status);
+
+  return {
+    subscriptionStatus: org.subscription_status,
+    monthlyQuota: tier === "agency" ? 0 : monthlyQuota, // 0 = unlimited for agency
+    tier,
   };
 }

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, CheckCircle2, Mail } from "lucide-react";
+import { CheckCircle2, Mail } from "lucide-react";
 
 export function AuthForm() {
   const [isLogin, setIsLogin] = useState(true);
@@ -13,8 +13,25 @@ export function AuthForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const orgInviteId = searchParams.get("org_invite");
+
+  /**
+   * If the user arrived via an invitation link, silently accept the invite
+   * after they authenticate. Non-fatal — navigation proceeds regardless.
+   */
+  const tryAcceptInvite = async (inviteOrgId: string) => {
+    try {
+      await fetch("/api/team/accept-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ org_id: inviteOrgId }),
+      });
+    } catch {
+      // Non-fatal: user is already authenticated; just proceed
+    }
+  };
 
   const clearMessages = () => {
     setError(null);
@@ -33,6 +50,8 @@ export function AuthForm() {
         // ── Sign In ───────────────────────────────────────────────────────
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        // Accept pending org invite if present
+        if (orgInviteId) await tryAcceptInvite(orgInviteId);
         router.refresh();
         router.replace("/dashboard");
       } else {
@@ -41,13 +60,17 @@ export function AuthForm() {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/dashboard`,
+            emailRedirectTo: orgInviteId
+              ? `${window.location.origin}/login?org_invite=${encodeURIComponent(orgInviteId)}`
+              : `${window.location.origin}/dashboard`,
           },
         });
         if (error) throw error;
 
         // Show a clear SUCCESS message (green), switch to sign-in view
-        setSuccess("We've sent a confirmation link to your inbox. Click it to activate your account, then sign in here.");
+        setSuccess(
+          "We've sent a confirmation link to your inbox. Click it to activate your account, then sign in here."
+        );
         setIsLogin(true);
         setPassword(""); // clear password field for sign-in
       }
@@ -57,38 +80,6 @@ export function AuthForm() {
       setLoading(false);
     }
   };
-
-  const handleDemoLogin = async () => {
-    if (demoLoading) return;
-    setDemoLoading(true);
-    clearMessages();
-
-    try {
-      const res = await fetch("/api/auth/demo-login", { method: "POST" });
-      const payload = await res.json();
-
-      if (!res.ok) {
-        throw new Error(payload?.error || "Demo login failed.");
-      }
-
-      const supabase = createClient();
-      const { error } = await supabase.auth.verifyOtp({
-        token_hash: payload.token_hash,
-        type: "magiclink",
-      });
-
-      if (error) throw error;
-
-      router.refresh();
-      router.replace("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Could not start demo session. Please try again.");
-    } finally {
-      setDemoLoading(false);
-    }
-  };
-
-  const isDisabled = loading || demoLoading;
 
   return (
     <div className="w-full max-w-[360px] mx-auto p-8 rounded-xl border border-[#222] bg-[#0a0a0a] shadow-2xl relative overflow-hidden">
@@ -104,7 +95,9 @@ export function AuthForm() {
           {isLogin ? "Sign in to StackScope" : "Create your account"}
         </h1>
         <p className="text-sm text-neutral-400">
-          Enter your details below to continue.
+          {isLogin
+            ? "Enter your credentials to continue."
+            : "Free plan: 4 scopes/month · unlimited edits."}
         </p>
       </div>
 
@@ -161,7 +154,7 @@ export function AuthForm() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
                   required
-                  disabled={isDisabled}
+                  disabled={loading}
                   className="flex h-10 w-full rounded-md border border-[#333] bg-[#000] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-[#555] transition-colors disabled:opacity-50"
                 />
               </div>
@@ -173,7 +166,7 @@ export function AuthForm() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  disabled={isDisabled}
+                  disabled={loading}
                   minLength={6}
                   className="flex h-10 w-full rounded-md border border-[#333] bg-[#000] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-[#555] transition-colors disabled:opacity-50"
                 />
@@ -197,7 +190,7 @@ export function AuthForm() {
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.98 }}
                 type="submit"
-                disabled={isDisabled}
+                disabled={loading}
                 className="w-full h-10 bg-white text-black text-sm font-medium rounded-md hover:bg-neutral-200 transition-colors mt-2 disabled:opacity-50"
               >
                 {loading
@@ -205,25 +198,6 @@ export function AuthForm() {
                   : isLogin ? "Sign In" : "Create Account"}
               </motion.button>
             </form>
-
-            {/* Demo login */}
-            <div className="relative z-10 flex items-center gap-3 my-5">
-              <div className="flex-1 h-px bg-[#222]" />
-              <span className="text-[11px] text-neutral-600 uppercase tracking-wider">or</span>
-              <div className="flex-1 h-px bg-[#222]" />
-            </div>
-
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.98 }}
-              type="button"
-              onClick={handleDemoLogin}
-              disabled={isDisabled}
-              className="relative z-10 w-full h-10 flex items-center justify-center gap-2 rounded-md border border-[#333] bg-[#111] text-sm font-medium text-neutral-300 hover:border-[#555] hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Zap className={`w-4 h-4 text-amber-400 ${demoLoading ? "animate-pulse" : ""}`} />
-              {demoLoading ? "Starting demo..." : "Try Demo — instant access"}
-            </motion.button>
 
             <div className="mt-6 text-center text-[13px] text-neutral-500 relative z-10">
               {isLogin ? "Don't have an account? " : "Already have an account? "}

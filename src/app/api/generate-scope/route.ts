@@ -45,32 +45,77 @@ export async function POST(req: NextRequest) {
     const billing = await getOrCreateBillingSnapshot(admin, user.id);
     const usagePeriod = getCurrentUsagePeriod();
 
-    const { data: usageRow, error: usageError } = await admin
-      .from("user_usage")
-      .select("requests_used")
+    // ── Resolve the user's active org for org-level quota enforcement ────────
+    const { data: orgMembership } = await admin
+      .from("organization_members")
+      .select("org_id")
       .eq("user_id", user.id)
-      .eq("period_start", usagePeriod.start)
+      .eq("status", "active")
+      .limit(1)
       .maybeSingle();
 
-    if (usageError) {
-      return NextResponse.json({ error: "Failed to read usage" }, { status: 500 });
+    const orgId: string | null = orgMembership?.org_id ?? null;
+
+    // ── Quota check (org-scoped when available, else user-scoped) ────────────
+    let usedCount = 0;
+
+    if (orgId) {
+      // Aggregate usage across all active org members
+      const { data: members } = await admin
+        .from("organization_members")
+        .select("user_id")
+        .eq("org_id", orgId)
+        .eq("status", "active");
+
+      const memberIds = (members || []).map((m: { user_id: string }) => m.user_id);
+
+      const { data: usageRows } = await admin
+        .from("user_usage")
+        .select("requests_used")
+        .in("user_id", memberIds)
+        .eq("period_start", usagePeriod.start);
+
+      const completedUsage = (usageRows || []).reduce(
+        (sum: number, r: { requests_used: number }) => sum + (r.requests_used ?? 0), 0
+      );
+
+      const { count: queuedCount } = await admin
+        .from("scope_jobs")
+        .select("id", { count: "exact", head: true })
+        .in("user_id", memberIds)
+        .in("status", ["queued", "processing"])
+        .gte("created_at", usagePeriod.startDate.toISOString())
+        .lt("created_at", usagePeriod.endDate.toISOString());
+
+      usedCount = completedUsage + (queuedCount ?? 0);
+    } else {
+      const { data: usageRow, error: usageError } = await admin
+        .from("user_usage")
+        .select("requests_used")
+        .eq("user_id", user.id)
+        .eq("period_start", usagePeriod.start)
+        .maybeSingle();
+
+      if (usageError) {
+        return NextResponse.json({ error: "Failed to read usage" }, { status: 500 });
+      }
+
+      const { count: queuedCount, error: queuedError } = await admin
+        .from("scope_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .in("status", ["queued", "processing"])
+        .gte("created_at", usagePeriod.startDate.toISOString())
+        .lt("created_at", usagePeriod.endDate.toISOString());
+
+      if (queuedError) {
+        return NextResponse.json({ error: "Failed to read queued usage" }, { status: 500 });
+      }
+
+      usedCount = (usageRow?.requests_used ?? 0) + (queuedCount ?? 0);
     }
 
-    const { count: queuedCount, error: queuedError } = await admin
-      .from("scope_jobs")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .in("status", ["queued", "processing"])
-      .gte("created_at", usagePeriod.startDate.toISOString())
-      .lt("created_at", usagePeriod.endDate.toISOString());
-
-    if (queuedError) {
-      return NextResponse.json({ error: "Failed to read queued usage" }, { status: 500 });
-    }
-
-    const used = (usageRow?.requests_used ?? 0) + (queuedCount ?? 0);
-
-    if (billing.monthlyQuota > 0 && used >= billing.monthlyQuota) {
+    if (billing.monthlyQuota > 0 && usedCount >= billing.monthlyQuota) {
       return NextResponse.json(
         { error: "Free tier quota exceeded. Upgrade to continue." },
         { status: 403 }
@@ -104,6 +149,7 @@ export async function POST(req: NextRequest) {
       .from("scope_jobs")
       .insert({
         user_id: user.id,
+        org_id: orgId,
         status: "queued",
         payload: {
           target_language: targetLanguage,

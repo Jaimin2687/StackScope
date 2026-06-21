@@ -71,20 +71,37 @@ export interface Profile {
   updated_at: string;
 }
 
+export type OrgRole = 'owner' | 'admin' | 'member';
+export type OrgMemberStatus = 'invited' | 'active';
+
 export interface Organization {
   id: string;
   name: string;
-  slug: string | null;
+  /** Reserved for future Stripe integration */
+  stripe_customer_id: string | null;
+  /** Active Razorpay subscription ID for this org */
+  razorpay_subscription_id: string | null;
+  subscription_status: 'free' | 'active' | 'trialing' | 'past_due' | 'canceled';
   created_at: string;
-  updated_at: string;
 }
 
 export interface OrganizationMember {
   id: string;
   org_id: string;
-  user_id: string;
-  role: 'owner' | 'admin' | 'member';
-  created_at: string;
+  /** Null for pending (invited but not yet accepted) members */
+  user_id: string | null;
+  email: string;
+  role: OrgRole;
+  status: OrgMemberStatus;
+  invited_at: string;
+}
+
+/** Joined view used by the team management UI */
+export interface OrgMemberWithProfile extends OrganizationMember {
+  profile?: {
+    full_name: string | null;
+    avatar_url: string | null;
+  };
 }
 
 export interface Project {

@@ -27,9 +27,9 @@ export async function GET(req: NextRequest) {
 
     const { data: job, error: jobError } = await supabase
       .from("scope_jobs")
-      .select("id, status, error, scope_id")
+      .select("id, status, error, scope_id, user_id")
       .eq("id", jobId)
-      .eq("user_id", user.id)
+      // RLS enforces org-member access — no hard user_id filter needed
       .single();
 
     if (jobError || !job) {
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
       .from("client_scopes")
       .select("generated_proposal")
       .eq("id", job.scope_id)
-      .eq("user_id", user.id)
+      // RLS enforces org-member access
       .single();
 
     if (scopeError || !scopeRow) {

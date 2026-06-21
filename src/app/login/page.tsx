@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { AuthForm } from "@/components/auth-form";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -19,7 +20,14 @@ export default function LoginPage() {
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
         className="w-full relative z-10 px-6"
       >
-        <AuthForm />
+        {/* Suspense required because AuthForm reads ?org_invite via useSearchParams */}
+        <Suspense fallback={
+          <div className="w-full max-w-[360px] mx-auto p-8 rounded-xl border border-[#222] bg-[#0a0a0a] h-[340px] flex items-center justify-center">
+            <div className="w-5 h-5 border-2 border-neutral-700 border-t-neutral-400 rounded-full animate-spin" />
+          </div>
+        }>
+          <AuthForm />
+        </Suspense>
         
         <div className="mt-12 flex justify-center gap-6 text-[13px] text-neutral-600">
           <a href="#" className="hover:text-neutral-300 transition-colors">Documentation</a>

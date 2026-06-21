@@ -323,25 +323,34 @@ export async function POST(req: Request) {
       .from("organization_members")
       .select("org_id")
       .eq("user_id", job.user_id)
+      .eq("status", "active")
       .limit(1)
-      .single();
+      .maybeSingle();
 
     let projectId: string | null = null;
     let orgId = orgMember?.org_id || null;
 
     if (!orgId) {
+      // Auto-create a Personal Workspace org for new users
       const { data: newOrg } = await admin
         .from("organizations")
-        .insert({ name: "Personal Workspace", slug: `workspace-${Date.now()}` })
+        .insert({ name: "Personal Workspace", subscription_status: "free" })
         .select("id")
         .single();
 
       if (newOrg) {
         orgId = newOrg.id;
+
+        // Fetch the user's email from auth so we can store it on the membership
+        const { data: authUser } = await admin.auth.admin.getUserById(job.user_id);
+        const userEmail = authUser?.user?.email ?? "";
+
         await admin.from("organization_members").insert({
           org_id: orgId,
           user_id: job.user_id,
+          email: userEmail,
           role: "owner",
+          status: "active",
         });
       }
     }
@@ -377,6 +386,7 @@ export async function POST(req: Request) {
       .from("client_scopes")
       .insert({
         user_id: job.user_id,
+        org_id: orgId,
         project_id: projectId,
         status: "draft",
         raw_brief: rawBriefCache,
